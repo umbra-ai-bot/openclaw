@@ -27,18 +27,17 @@ type MessageChannelSelectionSource = "explicit" | "tool-context-fallback" | "sin
 
 function resolveAvailableChannel(params: {
   cfg: OpenClawConfig;
-  value?: string | null;
+  channel: string | undefined;
   agentId?: string;
 }): { channel: string; plugin: ChannelPlugin } | undefined {
   // Availability belongs to the scoped resolver, not the process-root channel list.
-  const normalized = normalizeMessageChannel(params.value);
-  if (!normalized) {
+  if (!params.channel) {
     return undefined;
   }
   // Local agent processes may have only setup metadata for external channels;
   // explicit activation lets their message tools use the same send path as the CLI.
   const plugin = resolveOutboundChannelPlugin({
-    channel: normalized,
+    channel: params.channel,
     cfg: params.cfg,
     agentId: params.agentId,
     allowBootstrap: true,
@@ -193,20 +192,18 @@ export async function resolveMessageChannelSelection(params: {
   source: MessageChannelSelectionSource;
 }> {
   const normalized = normalizeMessageChannel(params.channel);
-  const explicit = normalized
-    ? resolveAvailableChannel({
-        cfg: params.cfg,
-        value: params.channel,
-        agentId: params.agentId,
-      })
-    : undefined;
+  const explicit = resolveAvailableChannel({
+    cfg: params.cfg,
+    channel: normalized,
+    agentId: params.agentId,
+  });
   if (explicit) {
     return { ...explicit, configured: [], source: "explicit" };
   }
 
   const fallback = resolveAvailableChannel({
     cfg: params.cfg,
-    value: params.fallbackChannel,
+    channel: normalizeMessageChannel(params.fallbackChannel),
     agentId: params.agentId,
   });
   if (fallback) {

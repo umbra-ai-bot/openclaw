@@ -796,7 +796,6 @@ export async function handleOpenAiHttpRequest(
   let finalToolCalls: ReturnType<typeof readOpenAiHttpRunTerminal>["pendingToolCalls"];
   let finalUsage: OpenAiChatCompletionsUsage | undefined;
   let finalizeScheduled = false;
-  let resultResolved = false;
   let closed = false;
   let observedTerminalLifecycle = false;
   let terminalStreamError: { message: string; type: string; code?: string } | undefined;
@@ -806,10 +805,7 @@ export async function handleOpenAiHttpRequest(
     if (closed || finalizeScheduled) {
       return;
     }
-    if (!resultResolved) {
-      return;
-    }
-    if (streamIncludeUsage && !finalUsage) {
+    if (!finalUsage) {
       return;
     }
     // Agent text_end flushes run in a microtask. Keep the stream subscribed
@@ -926,7 +922,6 @@ export async function handleOpenAiHttpRequest(
   void (async () => {
     try {
       const result = await runAgentCommand();
-      resultResolved = true;
 
       if (closed) {
         return;
@@ -964,7 +959,6 @@ export async function handleOpenAiHttpRequest(
         stopReason === "tool_calls" && pendingToolCalls?.length ? pendingToolCalls : undefined;
       requestFinalize();
     } catch (err) {
-      resultResolved = true;
       if (closed || abortController.signal.aborted) {
         return;
       }

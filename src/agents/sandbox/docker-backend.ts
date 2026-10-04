@@ -34,14 +34,6 @@ import type { SandboxRegistryEntry } from "./registry.js";
 
 type ContainerExecFinalizeToken = () => Promise<void>;
 
-function resolveContainerExecEnv(env: Record<string, string>): Record<string, string> {
-  const { PATH: requestedPath, ...containerEnv } = env;
-  if (requestedPath) {
-    containerEnv.OPENCLAW_PREPEND_PATH = requestedPath;
-  }
-  return containerEnv;
-}
-
 function buildContainerExecArgs(params: {
   containerName: string;
   command: string;
@@ -71,20 +63,6 @@ function buildContainerExecArgs(params: {
   // Use absolute path for sh to avoid dependency on PATH resolution during exec.
   args.push(params.containerName, "/bin/sh", "-lc", `${pathExport}${params.command}`);
   return args;
-}
-
-function resolveConfiguredDockerRuntimeImage(params: {
-  config: CreateSandboxBackendParams["cfg"] | import("../../config/config.js").OpenClawConfig;
-  agentId?: string;
-  configLabelKind?: string;
-}): string {
-  const sandboxCfg = resolveSandboxConfigForAgent(params.config, params.agentId);
-  switch (params.configLabelKind) {
-    case "BrowserImage":
-      return sandboxCfg.browser.image;
-    default:
-      return sandboxCfg.docker.image;
-  }
 }
 
 async function createContainerSandboxBackend(
@@ -222,7 +200,11 @@ function createContainerSandboxBackendHandle(params: {
             GH_CONFIG_DIR: SANDBOX_GITHUB_CONFIG_DIR,
           }
         : requestedEnv;
-      const envFile = await createContainerEnvFile(resolveContainerExecEnv(env));
+      const { PATH: requestedPath, ...containerEnv } = env;
+      if (requestedPath) {
+        containerEnv.OPENCLAW_PREPEND_PATH = requestedPath;
+      }
+      const envFile = await createContainerEnvFile(containerEnv);
       try {
         params.assertCurrent?.();
         const argv = [
@@ -401,11 +383,11 @@ function createContainerSandboxBackendManager(
           // ignore inspect failures
         }
       }
-      const configuredImage = resolveConfiguredDockerRuntimeImage({
-        config,
-        agentId,
-        configLabelKind: entry.configLabelKind,
-      });
+      const sandboxCfg = resolveSandboxConfigForAgent(config, agentId);
+      const configuredImage =
+        entry.configLabelKind === "BrowserImage"
+          ? sandboxCfg.browser.image
+          : sandboxCfg.docker.image;
       let configLabelMatch = actualConfigLabel === configuredImage;
       if (runtimeEngine.id === "podman" && !configLabelMatch && actualImageId) {
         try {

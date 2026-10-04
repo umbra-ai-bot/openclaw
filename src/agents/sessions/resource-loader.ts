@@ -239,7 +239,7 @@ export class DefaultResourceLoader implements ResourceLoader {
 
   private resolveSourceInfoForPath(
     resourcePath: string,
-    extraSourceInfos?: Map<string, SourceInfo>,
+    extraSourceInfos: Map<string, SourceInfo>,
     existing?: SourceInfo,
   ): SourceInfo {
     if (!resourcePath) {
@@ -251,12 +251,10 @@ export class DefaultResourceLoader implements ResourceLoader {
     }
 
     const normalizedResourcePath = resolve(resourcePath);
-    if (extraSourceInfos) {
-      for (const [sourcePath, sourceInfo] of extraSourceInfos.entries()) {
-        const normalizedSourcePath = resolve(sourcePath);
-        if (isPathInside(normalizedSourcePath, normalizedResourcePath)) {
-          return { ...sourceInfo, path: resourcePath };
-        }
+    for (const [sourcePath, sourceInfo] of extraSourceInfos) {
+      const normalizedSourcePath = resolve(sourcePath);
+      if (isPathInside(normalizedSourcePath, normalizedResourcePath)) {
+        return { ...sourceInfo, path: resourcePath };
       }
     }
 

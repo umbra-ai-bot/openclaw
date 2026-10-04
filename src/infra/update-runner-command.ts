@@ -45,24 +45,17 @@ export async function reportUpdateStepCompletion(
   step: Parameters<NonNullable<UpdateStepProgress["onStepComplete"]>>[0],
   commandFailure?: { cause: unknown },
 ): Promise<void> {
-  let reportOutcome: { ok: true } | { ok: false; error: unknown } = { ok: true };
   try {
     await progress?.onStepComplete?.(step);
   } catch (error) {
-    reportOutcome = { ok: false, error };
+    if (commandFailure || isFailedUpdateStep(step)) {
+      const failure = commandFailure ? commandFailure.cause : createUpdateStepFailureError(step);
+      throw new AggregateError([failure, error], "Update command and completion reporting failed", {
+        cause: failure,
+      });
+    }
+    throw error;
   }
-  if (reportOutcome.ok) {
-    return;
-  }
-  if (commandFailure || isFailedUpdateStep(step)) {
-    const failure = commandFailure ? commandFailure.cause : createUpdateStepFailureError(step);
-    throw new AggregateError(
-      [failure, reportOutcome.error],
-      "Update command and completion reporting failed",
-      { cause: failure },
-    );
-  }
-  throw reportOutcome.error;
 }
 
 export async function runStep(opts: RunStepOptions): Promise<UpdateStepResult> {
@@ -199,7 +192,7 @@ export function normalizeFallbackFailureReason(
 
 export async function buildUpdateCommandRunner(
   runCommand?: CommandRunner,
-): Promise<{ defaultCommandEnv: NodeJS.ProcessEnv | undefined; runCommand: CommandRunner }> {
+): Promise<{ defaultCommandEnv: NodeJS.ProcessEnv; runCommand: CommandRunner }> {
   const defaultCommandEnv = await createGlobalInstallEnv();
   return {
     defaultCommandEnv,
@@ -208,10 +201,7 @@ export async function buildUpdateCommandRunner(
       (async (argv, options) =>
         await runCommandWithTimeout(argv, {
           ...options,
-          env:
-            defaultCommandEnv && options.env
-              ? { ...defaultCommandEnv, ...options.env }
-              : (defaultCommandEnv ?? options.env),
+          env: options.env ? { ...defaultCommandEnv, ...options.env } : defaultCommandEnv,
           // Package-manager trees must not outlive a timed-out updater.
           killProcessTree: true,
         })),

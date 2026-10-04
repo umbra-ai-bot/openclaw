@@ -548,13 +548,9 @@ export function resolveLegacyCurrentConversationBindingsPath(stateDir: string): 
 }
 
 function currentConversationBindingKey(ref: SessionBindingRecord["conversation"]): string {
-  const normalized = normalizeConversationRef(ref);
-  return [
-    normalized.channel,
-    normalized.accountId,
-    normalized.parentConversationId ?? "",
-    normalized.conversationId,
-  ].join("\u241f");
+  return [ref.channel, ref.accountId, ref.parentConversationId ?? "", ref.conversationId].join(
+    "\u241f",
+  );
 }
 
 function normalizeLegacyCurrentConversationBindingRecord(
@@ -612,11 +608,10 @@ function normalizeLegacyCurrentConversationBindingFile(input: unknown): SessionB
 function currentConversationBindingRow(
   record: SessionBindingRecord,
 ): ReturnType<typeof serializeCurrentConversationBindingRow> {
-  const conversation = normalizeConversationRef(record.conversation);
   return serializeCurrentConversationBindingRow(
     record,
-    conversation,
-    currentConversationBindingKey(conversation),
+    record.conversation,
+    currentConversationBindingKey(record.conversation),
   );
 }
 

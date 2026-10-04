@@ -10,7 +10,6 @@ export async function refreshCostUsageCacheForAgent(params: {
   agentId: string;
   agentDir?: string;
   databasePath?: string;
-  maxFiles?: number;
   sessionsDir?: string;
   storePath?: string;
   sessionFiles?: string[];
@@ -22,7 +21,6 @@ export async function refreshCostUsageCacheForAgent(params: {
     const prepared = prepareUsageCostWorker(params);
     const result = await runUsageCostWorker(prepared, {
       kind: "refresh",
-      maxFiles: params.maxFiles,
       sessionsDir: params.sessionsDir,
       sessionFiles: params.sessionFiles,
       startMs: params.startMs,
