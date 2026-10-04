@@ -13,7 +13,7 @@ import { emitSessionsChanged } from "./server-methods/session-change-event.js";
 import type { WorkerPlacementSessionWorkCancellation } from "./server-worker-placement-cancel.js";
 import {
   createGatewayWorkerPlacementChangePublisher,
-  subscribeGatewayWorkerMachineShapeChanges,
+  subscribeGatewayWorkerPlacementMetadataChanges,
 } from "./server-worker-placement-change-events.js";
 import { createGatewayWorkerDispatchAdmission } from "./server-worker-placement-dispatch-admission.js";
 import { createGatewayWorkerPlacementLocalDispatchBarrier } from "./server-worker-placement-local-dispatch.js";
@@ -134,6 +134,9 @@ export function createGatewayWorkerPlacementRuntime(
     hasCurrentDeviceRunner: (deviceId) =>
       nodeWorkerSupervisorTransport?.hasCurrentRunner(deviceId) === true,
   });
+  let metadataChanges:
+    | ReturnType<typeof subscribeGatewayWorkerPlacementMetadataChanges>
+    | undefined;
   const diskSpace = createWorkerPlacementDiskSpaceMonitor({
     placements: params.placements,
     environments: params.environments,
@@ -360,7 +363,11 @@ export function createGatewayWorkerPlacementRuntime(
       return null;
     }
     const uninstallPlacementAdmission = installSessionPlacementAdmissionProvider(admissionProvider);
-    const unsubscribeMachineShape = subscribeGatewayWorkerMachineShapeChanges(params);
+    const changes = subscribeGatewayWorkerPlacementMetadataChanges({
+      ...params,
+      runnerAvailability,
+    });
+    metadataChanges = changes;
     const scope = scheduler.scope();
     const placementReconcile = { current: undefined as Promise<void> | undefined };
     const diskSpaceSweep = { current: undefined as Promise<void> | undefined };
@@ -492,7 +499,7 @@ export function createGatewayWorkerPlacementRuntime(
         const currentStop = (async () => {
           await Promise.allSettled(
             [
-              unsubscribeMachineShape(),
+              changes.stop(),
               placementReconcile.current,
               diskSpaceSweep.current,
               placementIdleSuspend.current,
@@ -589,7 +596,13 @@ export function createGatewayWorkerPlacementRuntime(
     dispatchService,
     admissionProvider,
     diskSpace,
-    runnerAvailability,
+    runnerAvailability: {
+      ...runnerAvailability,
+      markChanged(nodeId: string) {
+        runnerAvailability.markChanged();
+        metadataChanges?.runnerChanged(nodeId);
+      },
+    },
     placements: params.placements,
     githubPublication,
     repositoryWorkspaceMutationService: createRepositoryWorkspaceMutationService({

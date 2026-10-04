@@ -26,11 +26,9 @@ import {
 } from "../../routing/session-key.js";
 import { errorShapeFromError } from "../error-shape.js";
 import { hasOperatorBoundary } from "../operator-role-policy.js";
-import { registerSerializedJsonArray } from "../serialized-json.js";
 import { SessionMutationAuthorizationChangedError } from "../session-mutation-authorization-error.js";
 import { resolveRequestedSessionAgentId as resolveRequestedGlobalAgentId } from "../session-request-agent.js";
 import { withReadySessionRows, type SessionRowReadView } from "../session-row-prepared-read.js";
-import { serializeSessionRow } from "../session-row-presentation.js";
 import {
   getSessionRowProjection,
   requireSessionRowProjection,
@@ -285,21 +283,14 @@ export const sessionReadHandlers: GatewayRequestHandlers = {
       opts: params,
       context,
       client,
+      acceptsSerializedJson: args.acceptsSerializedJson,
       diagnostics,
-      onResult: (result, sharedRows) => {
+      onResult: (result) => {
         args.sessionMutationAuthorization?.assertCurrent();
         // An event delivered before roster admission may not have established its ancestor rows.
         if (client?.connId) {
           context.forgetConnectionAncestors(client.connId);
         }
-        // The RPC snapshot is immutable; embedded list results retain private mutable wrappers.
-        for (const row of result.sessions) {
-          Object.freeze(row);
-        }
-        registerSerializedJsonArray(
-          Object.freeze(result.sessions),
-          sharedRows.map(serializeSessionRow),
-        );
         respond(true, result);
       },
     });
