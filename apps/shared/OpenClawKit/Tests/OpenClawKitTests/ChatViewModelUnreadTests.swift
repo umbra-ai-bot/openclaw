@@ -1095,15 +1095,15 @@ struct ChatViewModelUnreadTests {
         #expect(viewModel.sessions.first(where: { $0.key == "a" })?.unread == true)
         #expect(viewModel.unreadPatchGuard.localUnreadOverride(key: "a") == true)
 
+        // The fresh row's timestamp shows the post-patch observation was applied, not just requested.
         await transport.setSessions([
-            self.entry(key: "a", unread: true),
+            self.entry(key: "a", unread: true, updatedAt: 2),
             self.entry(key: "b", unread: false),
         ])
-        let listCallCount = await transport.listCallCount()
         await patchGate.release()
         await transport.waitForState { $0.unreadPatchAttempts.count >= 1 }
         #expect(await transport.unreadPatchAttempts().count == 1)
-        await transport.waitForState { $0.listCalls > listCallCount }
+        await waitForObservedState { viewModel.sessions.first(where: { $0.key == "a" })?.updatedAt == 2 }
 
         #expect(viewModel.unreadPatchGuard.localUnreadOverride(key: "a") == nil)
         #expect(viewModel.unreadPatchGuard.confirmedUnread(key: "a") == true)
