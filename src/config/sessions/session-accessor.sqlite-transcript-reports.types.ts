@@ -5,6 +5,51 @@ import type {
   TranscriptMessageAppendResult,
 } from "./session-accessor.sqlite-contract.js";
 import type { PreparedTranscriptMessageAppend } from "./session-accessor.sqlite-transcript-message-append.types.js";
+import type { InternalSessionEntry } from "./types.js";
+
+/** Selection and commit share the predecessor predicate; age alone never proves lost ownership. */
+export function isStartupSessionInterruptionCandidate(
+  entry: InternalSessionEntry,
+  processStartedAt: number,
+): boolean {
+  return (
+    entry.status === "running" &&
+    !entry.incognito &&
+    !entry.abortedLastRun &&
+    typeof entry.startedAt === "number" &&
+    Number.isFinite(entry.startedAt) &&
+    entry.startedAt < processStartedAt &&
+    Number.isFinite(entry.updatedAt) &&
+    entry.updatedAt < processStartedAt &&
+    !entry.restartRecoveryRuns?.length &&
+    !entry.restartRecoveryForceSafeTools &&
+    !entry.subagentRecovery &&
+    !entry.mainRestartRecovery &&
+    !entry.pendingFinalDelivery &&
+    !entry.pendingDeliveryNotice &&
+    !entry.initializationPending &&
+    !entry.restartRecoveryBeforeAgentReplyState &&
+    !entry.restartRecoveryDeliveryReceiptState &&
+    !entry.restartRecoveryDeliveryRunId &&
+    !entry.restartRecoveryDeliverySourceRunId
+  );
+}
+
+export type StartupSessionInterruption = {
+  expected: Pick<
+    InternalSessionEntry,
+    "sessionId" | "lifecycleRevision" | "lifecycleRunId" | "updatedAt" | "startedAt"
+  >;
+  processStartedAt: number;
+  endedAt: number;
+  gatewayOwner: { owner: string; pid: number };
+};
+export type StartupSessionFailureReport = {
+  interruption: StartupSessionInterruption;
+  runId: string;
+  error: string;
+  report: CustomMessageReportAppend;
+};
 
 export type AbortedSessionTranscriptPartial = {
   runId: string;
@@ -67,6 +112,10 @@ export type TranscriptReportCommit = {
 };
 
 export type TranscriptReportWorkerOperations = {
+  startupFailure: {
+    input: StartupSessionFailureReport;
+    output: Result<TranscriptReportCommit | { retained: true }, TranscriptAppendRefusal>;
+  };
   abortedPartial: {
     input: AbortedSessionTranscriptPartial & {
       preparedMessage: PreparedTranscriptMessageAppend<Record<string, unknown>>;

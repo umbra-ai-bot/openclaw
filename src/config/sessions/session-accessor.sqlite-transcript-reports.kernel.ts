@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { asOptionalRecord, isRecord } from "@openclaw/normalization-core/record-coerce";
+import { hasSubagentSessionOwnerInDatabase } from "../../agents/subagents/registry/subagent-registry.store.sqlite.js";
+import { readGatewayOwnerLeaseFromDatabase } from "../../infra/gateway-owner-lease.read.js";
 import {
   executeSqliteQueryTakeFirstSync,
   iterateSqliteQuerySync,
@@ -16,19 +18,25 @@ import {
   isTranscriptOnlyOpenClawAssistantMessage,
 } from "../../shared/transcript-only-openclaw-assistant.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
+import { withCachedOpenClawStateDatabaseReadOnly } from "../../state/openclaw-state-db-readonly-reuse.js";
+import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import { readSessionEntryRow, writeSessionEntry } from "./session-accessor.sqlite-entry-store.js";
 import { getSessionKysely, type ResolvedTranscriptScope } from "./session-accessor.sqlite-scope.js";
 import { ensureTranscriptHeader } from "./session-accessor.sqlite-transcript-header.js";
 import { appendTranscriptMessageInTransaction } from "./session-accessor.sqlite-transcript-message-append.js";
 import type { PreparedTranscriptMessageAppend } from "./session-accessor.sqlite-transcript-message-append.types.js";
-import type {
-  AbortedSessionTranscriptPartial,
-  AbortedSessionTranscriptPartialResult,
-  CustomMessageReport,
-  CustomMessageReportAppend,
-  PreparedTranscriptReport,
-  SelectedTranscriptReport,
-  TranscriptReportSelection,
+import {
+  isStartupSessionInterruptionCandidate,
+  type AbortedSessionTranscriptPartial,
+  type AbortedSessionTranscriptPartialResult,
+  type CustomMessageReport,
+  type CustomMessageReportAppend,
+  type PreparedTranscriptReport,
+  type SelectedTranscriptReport,
+  type TranscriptReportSelection,
+  type TranscriptReport,
+  type StartupSessionFailureReport,
+  type StartupSessionInterruption,
 } from "./session-accessor.sqlite-transcript-reports.types.js";
 import { appendTranscriptEventInTransaction } from "./session-accessor.sqlite-transcript-store.js";
 import { assertSessionTranscriptHot } from "./session-cold-storage-state.js";
@@ -187,6 +195,118 @@ export function prepareTranscriptReportSelection(
         ? latestCustomReport(database, resolved.sessionId, branch, selection.customTypes)
         : undefined,
   };
+}
+
+/** Process-held reports select and append without crossing their native transaction boundary. */
+export function appendSessionTranscriptReportInTransaction(
+  database: OpenClawAgentDatabase,
+  resolved: ResolvedTranscriptScope,
+  report: TranscriptReport,
+): void {
+  const facts = prepareTranscriptReportSelection(
+    database,
+    resolved,
+    report.kind === "assistant"
+      ? { kind: "assistant", responseId: report.message.responseId }
+      : report,
+  );
+  if (facts.suppressed) {
+    return;
+  }
+  if (report.kind === "assistant") {
+    appendSelectedTranscriptReportInTransaction(database, resolved, facts.appendParentId, report);
+    return;
+  }
+  const selected = report.selectReport(facts.latest);
+  if (selected) {
+    appendSelectedTranscriptReportInTransaction(
+      database,
+      resolved,
+      facts.appendParentId,
+      prepareCustomTranscriptReport(selected, facts.appendParentId),
+    );
+  }
+}
+
+/** Agent execution retains this same-thread shared handle; never open a fallback during a grant. */
+export function inspectStartupSessionFailureOwner(
+  resolved: ResolvedTranscriptScope,
+  interruption: StartupSessionInterruption,
+): "retained" | "ownerless" {
+  const read = withCachedOpenClawStateDatabaseReadOnly<"retained" | "ownerless">(
+    (shared) => {
+      const lease = readGatewayOwnerLeaseFromDatabase(shared.db);
+      if (
+        lease?.state !== "live" ||
+        lease.pid !== interruption.gatewayOwner.pid ||
+        lease.owner !== interruption.gatewayOwner.owner
+      ) {
+        throw new Error("startup Gateway ownership changed or could not be verified");
+      }
+      return hasSubagentSessionOwnerInDatabase(shared, resolved.sessionKey)
+        ? "retained"
+        : "ownerless";
+    },
+    resolveOpenClawStateSqlitePath(resolved.env),
+    true,
+  );
+  if (!read.reused) {
+    throw new Error("Startup failure settlement lost its retained shared-state owner");
+  }
+  return read.value;
+}
+
+/** The interruption and its idempotent failure receipt commit on the canonical agent writer together. */
+export function appendStartupSessionFailureInTransaction(
+  database: OpenClawAgentDatabase,
+  resolved: ResolvedTranscriptScope,
+  input: StartupSessionFailureReport,
+  projection: { scheduleProjectionReconcile: false; onProjectionReconcileNeeded: () => void },
+): boolean {
+  const current = readSessionEntryRow(database, resolved.sessionKey)?.entry;
+  const { expected, processStartedAt, endedAt } = input.interruption;
+  if (
+    !current ||
+    current.sessionId !== expected.sessionId ||
+    current.lifecycleRevision !== expected.lifecycleRevision ||
+    current.lifecycleRunId !== expected.lifecycleRunId ||
+    current.updatedAt !== expected.updatedAt ||
+    current.startedAt !== expected.startedAt ||
+    !isStartupSessionInterruptionCandidate(current, processStartedAt)
+  ) {
+    throw new Error("startup subagent session changed before interruption receipt");
+  }
+  const facts = prepareTranscriptReportSelection(database, resolved, {
+    kind: "custom",
+    customTypes: [input.report.customType],
+    suppressWhenAssistantRun: input.runId,
+  });
+  if (facts.suppressed) {
+    return false;
+  }
+  writeSessionEntry(
+    database,
+    resolved.sessionKey,
+    {
+      ...current,
+      status: "interrupted",
+      abortedLastRun: true,
+      endedAt,
+      lastRunError: input.error,
+    },
+    { canonicalPreviousEntry: current },
+  );
+  if (isRecord(facts.latest?.details) && facts.latest.details.runId === input.runId) {
+    return true;
+  }
+  appendSelectedTranscriptReportInTransaction(
+    database,
+    resolved,
+    facts.appendParentId,
+    prepareCustomTranscriptReport(input.report, facts.appendParentId),
+    projection,
+  );
+  return true;
 }
 
 /** The producer has settled; only its committed answer may replace the buffered fallback. */

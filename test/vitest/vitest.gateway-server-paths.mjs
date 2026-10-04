@@ -237,6 +237,8 @@ export const gatewayDatabaseWorkerTestFiles = [
   "src/gateway/session-sharing-preparation.test.ts",
   "src/gateway/session-sharing.worker.test.ts",
   "src/gateway/session-startup-migration.test.ts",
+  "src/gateway/session-startup-orphan-admission.test.ts",
+  "src/gateway/session-startup-orphan-races.test.ts",
   "src/gateway/session-subagent-resume.test.ts",
   "src/gateway/session-swarm-summary.test.ts",
   "src/gateway/session-transcript-preview.hydration.test.ts",
@@ -542,14 +544,10 @@ export const gatewayCoreTestExclude = [
   "src/gateway/openai-http.test.ts",
   "src/gateway/openresponses-http.test.ts",
   "src/gateway/probe.auth.integration.test.ts",
-  "src/gateway/server.startup-matrix-migration.integration.test.ts",
   "src/gateway/sessions-history-http.test.ts",
 ];
 
-export const gatewayServerExcludedTestFiles = [
-  "src/gateway/gateway.test.ts",
-  "src/gateway/server.startup-matrix-migration.integration.test.ts",
-];
+export const gatewayServerExcludedTestFiles = ["src/gateway/gateway.test.ts"];
 
 const gatewayServerBackedHttpTestFileSet = new Set(gatewayServerBackedHttpTestFiles);
 const gatewayServerExcludedTestFileSet = new Set(gatewayServerExcludedTestFiles);

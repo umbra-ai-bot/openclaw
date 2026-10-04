@@ -297,12 +297,16 @@ describe("agent database admission", () => {
         status: "degraded",
         admissionRefusal: refusal,
       });
-      const { runStartupSessionMigration } =
-        await import("../gateway/server-startup-session-migration.js");
+      const { runStartupSessionMaintenanceForTest } =
+        await import("../gateway/server-startup-session-migration.test-support.js");
       const { assertConfiguredWorkspaceStateReady } =
         await import("../agents/workspace-state-dirs.js");
       await assertConfiguredWorkspaceStateReady({ cfg: config, env });
-      await runStartupSessionMigration({ cfg: config, env, log: { info: vi.fn(), warn: vi.fn() } });
+      await runStartupSessionMaintenanceForTest({
+        cfg: config,
+        env,
+        log: { info: vi.fn(), warn: vi.fn() },
+      });
       deepStrictEqual(fs.readFileSync(target), copyBytes);
       expect(() => openOpenClawAgentDatabase({ agentId, env })).toThrow(refusal?.reason);
       closeOpenClawAgentDatabasesForTest();

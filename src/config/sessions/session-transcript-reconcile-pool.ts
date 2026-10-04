@@ -1,3 +1,4 @@
+import { addAbortListener } from "node:events";
 import { MessageChannel } from "node:worker_threads";
 import { toStringifiedError } from "@openclaw/normalization-core/error-coercion";
 import { runtimeProcessEntrypoints } from "../../infra/runtime-process-entrypoints.js";
@@ -56,16 +57,22 @@ export function runSessionTranscriptReconcileOperation<T>(
   generation: number,
   run: (operation: SessionTranscriptReconcileOperation) => Promise<T>,
   owner?: { agentId: string; path: string },
+  signal?: AbortSignal,
 ): Promise<T> {
   if (!isSessionTranscriptReconcileGenerationCurrent(generation)) {
     return Promise.reject(new Error("Session transcript reconciliation lifecycle is closed"));
   }
   let active = true;
   const controller = new AbortController();
+  if (signal?.aborted) {
+    controller.abort(signal.reason);
+  }
+  const abort = signal && addAbortListener(signal, () => controller.abort(signal.reason));
   let cleanupLease: Extract<SessionTranscriptReconcileWorkerInput, { mode: "release" }> | undefined;
   let unregister: (() => void) | undefined;
   const completion = createDeferredCore<T>();
   const promise = completion.promise.finally(() => {
+    abort?.[Symbol.dispose]();
     active = false;
     runtime.operations.delete(promise);
     if (!cleanupLease) {

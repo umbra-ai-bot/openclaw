@@ -9,7 +9,6 @@ import { loadSessionEntryReadOnly } from "../../../config/sessions/session-acces
 import { withSessionEntryReadOnlyInWorker } from "../../../config/sessions/session-entry-read-runtime.js";
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { getAgentRunContext, listAgentRunsForSession } from "../../../infra/agent-run-registry.js";
-import { withExistingOpenClawStateDatabaseCurrentReadOnly } from "../../../state/openclaw-state-db-readonly.js";
 import type { SubagentRunOutcome } from "../subagent-run-outcome.types.js";
 import { resolveSubagentChildSessionOwner } from "./subagent-child-session-owner.js";
 import { hasRetainedRequiredCompletionDelivery } from "./subagent-delivery-state.js";
@@ -20,7 +19,6 @@ import {
   type SubagentLifecycleEndedReason,
 } from "./subagent-lifecycle-events.js";
 import { subagentRuns } from "./subagent-registry-memory.js";
-import { hasSubagentSessionOwnerInDatabase } from "./subagent-registry.store.sqlite.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 import { isStaleUnendedSubagentRun } from "./subagent-run-liveness.js";
 
@@ -232,10 +230,9 @@ export async function resolveSubagentSessionStartedAt(params: {
 }
 
 /** Startup may only settle session-only rows; any run/task generation retains ownership. */
-export function hasSubagentSessionRecoveryOwner(params: {
+export function hasLiveSubagentSessionRecoveryOwner(params: {
   sessionKey: string;
   sessionId: string;
-  env: NodeJS.ProcessEnv;
 }): boolean {
   const key = params.sessionKey;
   if (listAgentRunsForSession(params).length > 0) {
@@ -250,11 +247,5 @@ export function hasSubagentSessionRecoveryOwner(params: {
       return true;
     }
   }
-  // Failed or incompatible reads propagate: unknown ownership never authorizes mutation.
-  return (
-    withExistingOpenClawStateDatabaseCurrentReadOnly(
-      (database) => hasSubagentSessionOwnerInDatabase(database, key),
-      { env: params.env },
-    ) ?? false
-  );
+  return false;
 }

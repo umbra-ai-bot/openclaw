@@ -30,6 +30,8 @@ import {
 } from "./session-accessor.sqlite-scope.js";
 import {
   appendAbortedSessionTranscriptPartialInTransaction,
+  appendStartupSessionFailureInTransaction,
+  inspectStartupSessionFailureOwner,
   appendSelectedTranscriptReportInTransaction,
   prepareTranscriptReportSelection,
 } from "./session-accessor.sqlite-transcript-reports.kernel.js";
@@ -129,13 +131,22 @@ export function bindSqliteWorkerBackend(
         });
       }
       return runOpenClawAgentWriteTransaction<
-        Result<TranscriptReportCommit, TranscriptAppendRefusal>
+        Result<TranscriptReportCommit | { retained: true }, TranscriptAppendRefusal>
       >(
         (current) => {
           if (current.db !== database.db) {
             throw new Error("Transcript report lost its canonical database owner");
           }
           admit("transaction");
+          if (
+            command.type === "startupFailure" &&
+            inspectStartupSessionFailureOwner(resolved, command.input.interruption) === "retained"
+          ) {
+            // Registry recovery owns this predecessor; no session or receipt write was attempted.
+            admit("commit");
+            inspectStartupSessionFailureOwner(resolved, command.input.interruption);
+            return ok({ retained: true });
+          }
           const refusal = readRefusal();
           if (refusal) {
             admit("commit");
@@ -153,7 +164,15 @@ export function bindSqliteWorkerBackend(
             },
           };
           let abortedPartial: AbortedSessionTranscriptPartialResult | undefined;
-          if (command.type === "abortedPartial") {
+          let startupSessionChanged = false;
+          if (command.type === "startupFailure") {
+            startupSessionChanged = appendStartupSessionFailureInTransaction(
+              database,
+              resolved,
+              command.input,
+              projection,
+            );
+          } else if (command.type === "abortedPartial") {
             abortedPartial = appendAbortedSessionTranscriptPartialInTransaction(
               database,
               resolved,
@@ -199,9 +218,19 @@ export function bindSqliteWorkerBackend(
             );
           }
           let commitGranted = false;
+          const assertStartupOwnerless = () => {
+            if (
+              command.type === "startupFailure" &&
+              inspectStartupSessionFailureOwner(resolved, command.input.interruption) === "retained"
+            ) {
+              throw new Error("a retained run/task owns this session");
+            }
+          };
           const authorizeCommit = () => {
             if (!commitGranted) {
+              assertStartupOwnerless();
               admit("commit");
+              assertStartupOwnerless();
               commitGranted = true;
             }
           };
@@ -229,6 +258,9 @@ export function bindSqliteWorkerBackend(
             committed: true,
             projectionNeedsReconcile,
             cliHistoryChanged,
+            ...(command.type === "startupFailure"
+              ? { sessionEntryChanged: startupSessionChanged }
+              : {}),
             ...(abortedPartial
               ? {
                   abortedPartial,
