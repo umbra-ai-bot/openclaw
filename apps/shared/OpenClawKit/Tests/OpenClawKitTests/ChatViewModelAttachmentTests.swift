@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import Observation
 import OpenClawKit
 import UniformTypeIdentifiers
 import XCTest
@@ -82,15 +81,6 @@ private actor AttachmentGate {
         self.released = true
         self.continuation?.resume()
         self.continuation = nil
-    }
-}
-
-@MainActor
-private func waitForObservedState(_ condition: @escaping @MainActor () -> Bool) async {
-    while !condition() {
-        await withCheckedContinuation { continuation in
-            withObservationTracking { _ = condition() } onChange: { continuation.resume() }
-        }
     }
 }
 

@@ -16,15 +16,6 @@ private func visibleTexts(_ vm: OpenClawChatViewModel) async -> [String] {
     await MainActor.run { vm.messages.map { $0.content.compactMap(\.text).joined() } }
 }
 
-@MainActor
-private func waitForObservedState(_ condition: @escaping @MainActor () -> Bool) async {
-    while !condition() {
-        await withCheckedContinuation { continuation in
-            withObservationTracking { _ = condition() } onChange: { continuation.resume() }
-        }
-    }
-}
-
 private func historyPayload(
     sessionKey: String,
     sessionID: String = "sess-live",

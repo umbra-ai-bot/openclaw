@@ -1,5 +1,4 @@
 import Foundation
-import Observation
 import Testing
 @testable import OpenClawChatUI
 
@@ -245,15 +244,6 @@ private struct AgentScopedNavigationTransport: OpenClawChatTransport {
 
     func events() -> AsyncStream<OpenClawChatTransportEvent> {
         self.base.events()
-    }
-}
-
-@MainActor
-private func waitForObservedState(_ condition: @escaping @MainActor () -> Bool) async {
-    while !condition() {
-        await withCheckedContinuation { continuation in
-            withObservationTracking { _ = condition() } onChange: { continuation.resume() }
-        }
     }
 }
 
