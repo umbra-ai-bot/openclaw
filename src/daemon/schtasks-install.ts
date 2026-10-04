@@ -183,9 +183,7 @@ export async function stageScheduledTask({
   ...args
 }: GatewayServiceInstallArgs): Promise<{ scriptPath: string }> {
   const { scriptPath } = await writeScheduledTaskScript(args);
-  writeFormattedLines(stdout, [{ label: "Staged task script", value: scriptPath }], {
-    leadingBlankLine: true,
-  });
+  writeFormattedLines(stdout, [{ label: "Staged task script", value: scriptPath }]);
   return { scriptPath };
 }
 
@@ -323,15 +321,11 @@ async function activateScheduledTask(
       });
       params.registration?.retainRecovery();
       await launchFallbackTaskScript(params.env);
-      writeFormattedLines(
-        params.stdout,
-        [
-          { label: "Installed Windows login item", value: startupEntryPath },
-          { label: "Startup mode", value: "Per-user desktop (requires interactive logon)" },
-          { label: "Task script", value: params.scriptPath },
-        ],
-        { leadingBlankLine: true },
-      );
+      writeFormattedLines(params.stdout, [
+        { label: "Installed Windows login item", value: startupEntryPath },
+        { label: "Startup mode", value: "Per-user desktop (requires interactive logon)" },
+        { label: "Task script", value: params.scriptPath },
+      ]);
       return "startup-fallback";
     }
     throw new Error(`schtasks create failed: ${detail}`.trim());
@@ -349,23 +343,19 @@ async function activateScheduledTask(
     allowFallback: params.definitionTransaction ? false : undefined,
   });
   // Ensure we don't end up writing to a clack spinner line (wizards show progress without a newline).
-  writeFormattedLines(
-    params.stdout,
-    [
-      { label: updating ? "Updated Scheduled Task" : "Installed Scheduled Task", value: taskName },
-      {
-        label: "Startup mode",
-        value:
-          create.code !== 0
-            ? "Existing task policy retained (inspect Task Scheduler)"
-            : params.env.OPENCLAW_SERVICE_KIND !== "node" && resolveTaskUser(params.env)
-              ? "Unattended (S4U; boot and logon; no stored password)"
-              : "Per-user desktop (requires interactive logon)",
-      },
-      { label: "Task script", value: params.scriptPath },
-    ],
-    { leadingBlankLine: true },
-  );
+  writeFormattedLines(params.stdout, [
+    { label: updating ? "Updated Scheduled Task" : "Installed Scheduled Task", value: taskName },
+    {
+      label: "Startup mode",
+      value:
+        create.code !== 0
+          ? "Existing task policy retained (inspect Task Scheduler)"
+          : params.env.OPENCLAW_SERVICE_KIND !== "node" && resolveTaskUser(params.env)
+            ? "Unattended (S4U; boot and logon; no stored password)"
+            : "Per-user desktop (requires interactive logon)",
+    },
+    { label: "Task script", value: params.scriptPath },
+  ]);
   return activation;
 }
 
@@ -449,7 +439,7 @@ export async function installScheduledTask(
         : startupRuntime;
     if (takeoverRuntime?.status === "running" && takeoverRuntime.pid) {
       // The old launcher can still own the listener; terminate it and prove the replacement.
-      await terminateGatewayProcessTree(takeoverRuntime.pid, 300);
+      await terminateGatewayProcessTree(takeoverRuntime.pid);
       let scheduledTaskRunAccepted = false;
       try {
         // Re-reading ownership now would inspect the replacement command, not the captured fallback.

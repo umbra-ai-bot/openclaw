@@ -362,7 +362,6 @@ export async function maybeRestartService(params: {
           timeoutMs: activation.timeoutMs,
           expectedVersion: expectedGatewayVersion,
           ...(expectedGatewayBuildId ? { expectedBuildId: expectedGatewayBuildId } : {}),
-          requirePluginHealth: false,
           env: activation.serviceEnv,
         });
         assertReadinessCurrent();
