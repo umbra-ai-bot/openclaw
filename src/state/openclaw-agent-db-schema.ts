@@ -51,6 +51,7 @@ import {
   getOpenClawAgentMigrationSchema,
   assertExistingAgentSchemaOwner,
   assertOpenClawAgentCurrentRuntimeSchema,
+  assertOpenClawAgentSchemaContains,
   assertSupportedAgentSchemaVersion,
   assertAgentSchemaVersion,
   hasPendingCurrentVersionAgentDatabaseMigration,
@@ -406,8 +407,17 @@ function ensureAgentSchema(
       if (previousVersion === AGENT_MEDIA_SCHEMA_VERSION) {
         ensureSessionAdditiveColumns(db);
         assertSqliteIntegrity(db, pathname);
-        // Index repair and whole-schema validation run in finishAgentSchemaMigration
-        // after legacy memory and participant shapes converge, in this transaction.
+        if (hasPendingMemoryChunkMetadataMigration(db)) {
+          migrateMemoryChunkMetadataSchema(db);
+        }
+        // Allow index repair, but reject missing stable tables before schema creation hides it.
+        assertOpenClawAgentSchemaContains(
+          db,
+          pathname,
+          getOpenClawAgentMigrationSchema(previousVersion),
+          "legacy",
+          true,
+        );
       }
       migrateRetiredAgentStateLeaseSchema(db, pathname, targetVersion);
       if (previousVersion === targetVersion) {
