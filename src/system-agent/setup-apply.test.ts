@@ -16,6 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { resolveGatewayStartupTiming } from "../commands/gateway-startup-timing.js";
 import * as configModule from "../config/config.js";
 import type { OpenClawConfigWithLegacyRoster } from "../config/legacy.roster.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -943,12 +944,12 @@ describe("applySystemAgentSetup transaction boundaries", () => {
   });
 
   it.each([
-    { platform: "linux", action: "installed", deadlineMs: 45_000, probeTimeoutMs: 10_000 },
-    { platform: "win32", action: "installed", deadlineMs: 90_000, probeTimeoutMs: 15_000 },
-    { platform: "linux", action: "restarted", deadlineMs: 45_000, probeTimeoutMs: 10_000 },
+    { platform: "linux", action: "installed" },
+    { platform: "win32", action: "installed" },
+    { platform: "linux", action: "restarted" },
   ] as const)(
     "uses the $platform readiness budget after service $action",
-    async ({ platform, action, deadlineMs, probeTimeoutMs }) => {
+    async ({ platform, action }) => {
       await withMockedPlatform(platform, async () => {
         const gateway = { status: "ready", action } as const;
         mocks.ensureGatewayService.mockResolvedValueOnce({ gateway });
@@ -958,7 +959,7 @@ describe("applySystemAgentSetup transaction boundaries", () => {
         expect(result.gateway).toEqual(gateway);
         expect(mocks.waitForGatewayReachable).toHaveBeenCalledOnce();
         expect(mocks.waitForGatewayReachable).toHaveBeenCalledWith(
-          expect.objectContaining({ deadlineMs, probeTimeoutMs }),
+          expect.objectContaining(resolveGatewayStartupTiming(platform)),
         );
       });
     },
