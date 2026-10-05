@@ -159,7 +159,29 @@ function projectUsageCreator(
 }
 
 export const usageHandlers: GatewayRequestHandlers = {
-  "usage.status": async ({ respond, context, client }) => {
+  "usage.status": async (options) => {
+    const { respond, context, client, params } = options;
+    if (params?.key !== undefined) {
+      if (
+        typeof params.key !== "string" ||
+        !params.key.trim() ||
+        (params.agentId !== undefined && typeof params.agentId !== "string")
+      ) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "Expected a session key and optional agentId."),
+        );
+        return;
+      }
+      const { handleSessionProviderUsage } = await import("./usage-session-provider.js");
+      await handleSessionProviderUsage(
+        options,
+        params.key.trim(),
+        params.agentId as string | undefined,
+      );
+      return;
+    }
     // Only clients with bounded retry machinery may receive an incomplete cold result.
     // In-process dispatch reuses the originating request's client, capabilities
     // included, so a plugin proxying this method inside a capable UI request

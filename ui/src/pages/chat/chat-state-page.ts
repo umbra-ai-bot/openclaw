@@ -37,6 +37,7 @@ import {
 } from "./chat-send-actions.ts";
 import { handleSendChat } from "./chat-send-submit.ts";
 import { OFFLINE_QUEUE_STORAGE_ERROR } from "./chat-send-support.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import { retireChatModelSelectionOwnership } from "./chat-session.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { selectedChatSessionRow } from "./chat-state-route.ts";
@@ -280,6 +281,7 @@ export function createPageState(
     modelAuthStatusRequestVersion: 0,
     modelAuthStatusResult: null,
     modelAuthStatusError: null,
+    chatSessionUsage: undefined,
     sessionsResult: null,
     sessionsResultAgentId: null,
     sessionsLoading: false,
@@ -635,5 +637,6 @@ export function createPageState(
     invalidateImageLightbox(state);
     renderLifecycle.invalidate();
   };
+  state.refreshChatProviderUsage = () => refreshChatModelAuthStatus(state);
   return state;
 }

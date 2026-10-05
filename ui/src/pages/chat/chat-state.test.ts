@@ -35,6 +35,11 @@ import { loadChatHistory } from "./chat-history.ts";
 import { makeChatHost } from "./chat-host.test-support.ts";
 import { createChatPageStateContext } from "./chat-page.test-support.ts";
 import { removeQueuedMessage } from "./chat-queue.ts";
+import {
+  refreshChatModelAuthStatus,
+  readChatSessionProviderUsage,
+} from "./chat-session-provider-usage.ts";
+import { switchChatModel } from "./chat-session.ts";
 import { ChatStateController } from "./chat-state-controller.ts";
 import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
@@ -44,7 +49,6 @@ import {
   applyChatModelCatalogSnapshot,
   refreshChatMetadata,
   refreshChatModelCatalogOnDemand,
-  refreshChatModelAuthStatus,
   retireChatMetadataRequests,
 } from "./chat-state-refresh.ts";
 import { selectedChatSessionRow } from "./chat-state-route.ts";
@@ -5031,6 +5035,100 @@ describe("refreshChatMetadata", () => {
 });
 
 describe("refreshChatModelAuthStatus", () => {
+  it("hides completed quota after connection ownership changes or disconnects", async () => {
+    const summary = { updatedAt: 9, providers: [] };
+    const request = vi.fn(async (method: string) =>
+      method === "usage.status" ? summary : { ts: 1, providers: [] },
+    );
+    const state = {
+      client: { request },
+      connected: true,
+      connectionEpoch: 1,
+      sessionKey: "agent:main:first",
+      modelAuthStatusRequestVersion: 0,
+      modelAuthStatusResult: null,
+      modelAuthStatusError: null,
+    } as unknown as ChatPageHost;
+    await refreshChatModelAuthStatus(state);
+    expect(readChatSessionProviderUsage(state)).toBe(summary);
+    state.connected = false;
+    expect(readChatSessionProviderUsage(state)).toBeNull();
+    state.connected = true;
+    state.connectionEpoch += 1;
+    expect(readChatSessionProviderUsage(state)).toBeNull();
+    state.connectionEpoch = 1;
+    state.client = { request } as unknown as GatewayBrowserClient;
+    expect(readChatSessionProviderUsage(state)).toBeNull();
+  });
+
+  it("retires completed quota on a local account/model intent and refreshes even a no-op", async () => {
+    const summary = { updatedAt: 9, providers: [] };
+    const state = makeChatHost({
+      sessionKey: "agent:main:first",
+      requestHandlers: {
+        "usage.status": summary,
+        "models.authStatus": { ts: 1, providers: [] },
+      },
+    }) as unknown as ChatPageHost;
+    state.modelAuthStatusRequestVersion = 0;
+    const refresh = vi.fn(async () => {});
+    state.refreshChatProviderUsage = refresh;
+    await refreshChatModelAuthStatus(state);
+    expect(readChatSessionProviderUsage(state)).toBe(summary);
+    await expect(switchChatModel(state, "")).resolves.toBe(true);
+    expect(readChatSessionProviderUsage(state)).toBeNull();
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("rejects pending quota when a newer local model/account intent claims ownership", async () => {
+    const quota = createDeferred<{ updatedAt: number; providers: never[] }>();
+    const state = makeChatHost({
+      sessionKey: "agent:main:first",
+      requestHandlers: {
+        "usage.status": () => quota.promise,
+        "models.authStatus": { ts: 1, providers: [] },
+      },
+    }) as unknown as ChatPageHost;
+    state.modelAuthStatusRequestVersion = 0;
+    const refresh = refreshChatModelAuthStatus(state);
+    await switchChatModel(state, "");
+    quota.resolve({ updatedAt: 9, providers: [] });
+    await refresh;
+    expect(readChatSessionProviderUsage(state)).toBeNull();
+    expect(state.chatSessionUsage?.summary).toBeNull();
+  });
+
+  it("rejects a delayed quota response after switching to another session", async () => {
+    const quota = createDeferred<{ updatedAt: number; providers: never[] }>();
+    const request = vi.fn((method: string) =>
+      method === "usage.status" ? quota.promise : Promise.resolve({ ts: 1, providers: [] }),
+    );
+    const state = {
+      client: { request },
+      connected: true,
+      connectionEpoch: 1,
+      sessionKey: "agent:main:first",
+      modelAuthStatusRequestVersion: 0,
+      modelAuthStatusResult: null,
+      modelAuthStatusError: null,
+    } as unknown as ChatPageHost;
+    const refresh = refreshChatModelAuthStatus(state);
+    state.sessionKey = "agent:main:second";
+    quota.resolve({ updatedAt: 9, providers: [] });
+    await refresh;
+    expect(state.chatSessionUsage).toEqual({
+      sessionKey: "agent:main:first",
+      agentId: "main",
+      client: state.client,
+      connectionEpoch: 1,
+      ownsSelection: expect.any(Function),
+      summary: null,
+    });
+    expect(request).toHaveBeenCalledWith("usage.status", {
+      key: "agent:main:first",
+      agentId: "main",
+    });
+  });
   it.each([
     undefined,
     {
@@ -5057,7 +5155,7 @@ describe("refreshChatModelAuthStatus", () => {
       applySelectedChatAgent(state, "research");
 
       expect(request).toHaveBeenCalledWith("models.authStatus", { agentId: "work" });
-      expect(request).toHaveBeenCalledOnce();
+      expect(request).toHaveBeenCalledTimes(2);
       expect(state.assistantAgentId).toBe("main");
       expect(state.modelAuthStatusResult).toBe(result);
       expect(state.modelAuthStatusError).toBe(unavailable?.message ?? null);
@@ -5165,7 +5263,7 @@ describe("refreshChatModelAuthStatus", () => {
 
       expect(state.modelAuthStatusResult).toBe(currentStatus);
       expect(state.modelAuthStatusError).toBeNull();
-      expect(request).toHaveBeenCalledOnce();
+      expect(request).toHaveBeenCalledTimes(2);
     },
   );
 });

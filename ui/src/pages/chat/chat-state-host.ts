@@ -1,5 +1,7 @@
 import type { ChatAccountSelection } from "../../../../packages/gateway-protocol/src/index.ts";
 import type { SessionObserverDigest } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
+import type { UsageSummary } from "../../../../src/infra/provider-usage.types.js";
+import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type {
   AgentsListResult,
   ModelAuthStatusResult,
@@ -80,6 +82,15 @@ export type ChatPageHost = ChatHost &
     modelAuthStatusRequestVersion: number;
     modelAuthStatusResult: ModelAuthStatusResult | null;
     modelAuthStatusError: string | null;
+    refreshChatProviderUsage?: () => Promise<void>;
+    chatSessionUsage?: {
+      sessionKey: string;
+      agentId: string;
+      client: GatewayBrowserClient;
+      connectionEpoch: number;
+      ownsSelection: () => boolean;
+      summary: UsageSummary | null;
+    };
     sessionsResult: SessionsListResult | null;
     sessionsResultAgentId: string | null;
     sessionsError: string | null;

@@ -9,6 +9,7 @@ import { t } from "../../../i18n/index.ts";
 import { formatCompactTokenCount, formatCost } from "../../../lib/format.ts";
 import { isMonitoredAuthProvider } from "../../../lib/model-auth.ts";
 import {
+  sessionUsageQuotaStatus,
   collectProviderQuotaGroups,
   formatQuotaReset,
   type ProviderQuotaGroup,
@@ -266,19 +267,25 @@ function renderQuotaBudgetRow(budget: QuotaBudgetSummary) {
   `;
 }
 
-function renderQuotaGroup(group: ProviderQuotaGroup, usageHref: string) {
+function renderQuotaGroup(group: ProviderQuotaGroup, usageHref: string | null) {
   return html`
     <div class="context-usage__section-label context-usage__plan-header">
       <span>${t("chat.composer.contextUsage.planUsage")}</span>
-      <a
-        class="context-usage__plan-link"
-        href=${usageHref}
-        data-chat-provider-usage="true"
-        aria-label=${t("chat.composer.contextUsage.openUsage")}
-      >
-        ${group.plan ? html`<span class="context-usage__plan-badge">${group.plan}</span>` : nothing}
-        ${icons.externalLink}
-      </a>
+      ${
+        usageHref
+          ? html`<a
+              class="context-usage__plan-link"
+              href=${usageHref}
+              data-chat-provider-usage="true"
+              aria-label=${t("chat.composer.contextUsage.openUsage")}
+            >
+              ${group.plan ? html`<span class="context-usage__plan-badge">${group.plan}</span>` : nothing}
+              ${icons.externalLink}
+            </a>`
+          : group.plan
+            ? html`<span class="context-usage__plan-badge">${group.plan}</span>`
+            : nothing
+      }
     </div>
     ${
       group.accountEmail
@@ -306,8 +313,10 @@ export function renderContextNotice(
   const model = getContextNoticeViewModel(session, defaultContextTokens, options.liveUsage);
   const quotaGroups = options.providerUsage
     ? collectProviderQuotaGroups(
-        options.providerUsage.modelAuthStatusResult ?? null,
-        isMonitoredAuthProvider,
+        options.providerUsage.sessionUsage !== undefined
+          ? sessionUsageQuotaStatus(options.providerUsage.sessionUsage)
+          : (options.providerUsage.modelAuthStatusResult ?? null),
+        options.providerUsage.sessionUsage !== undefined ? () => true : isMonitoredAuthProvider,
       )
     : [];
   const currentProvider =
@@ -474,7 +483,14 @@ export function renderContextNotice(
                   `
                 : nothing
             }
-            ${currentGroup ? renderQuotaGroup(currentGroup, usageHref) : nothing}
+            ${
+              currentGroup
+                ? renderQuotaGroup(
+                    currentGroup,
+                    options.providerUsage?.sessionUsage !== undefined ? null : usageHref,
+                  )
+                : nothing
+            }
           </section>
         </wa-popup>
       </details>

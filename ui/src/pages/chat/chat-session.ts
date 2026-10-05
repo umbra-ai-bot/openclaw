@@ -58,9 +58,16 @@ type ChatModelSettingsHost = ChatSessionRefreshHost & {
   sessionsResult?: SessionsListResult | null;
   sessionsResultAgentId?: string | null;
   requestUpdate?: () => void;
+  refreshChatProviderUsage?: () => Promise<void>;
 };
 
 const modelSelectionOwners = new WeakMap<object, AbortController>();
+
+/** A later model/account intent retires reads and presentation from this selection. */
+export function captureChatModelSelectionAuthority(host: object): () => boolean {
+  const owner = modelSelectionOwners.get(host);
+  return () => modelSelectionOwners.get(host) === owner && owner?.signal.aborted !== true;
+}
 
 export function cancelChatModelRecovery(host: object): void {
   modelSelectionOwners.get(host)?.abort();
@@ -474,6 +481,7 @@ export async function switchChatModel(
         : isSessionRuntimePinned(activeRow?.agentRuntime) &&
           activeRow?.agentRuntime?.id === runtimeSelection));
   if (currentOverride === nextModel && runtimeUnchanged) {
+    void host.refreshChatProviderUsage?.();
     return true;
   }
   const modelOwnerAgentId = scopedAgentParamsForSession(host, targetSessionKey).agentId;
@@ -493,6 +501,7 @@ export async function switchChatModel(
       session: readChatSettingsTargetRow(host, targetSessionKey),
     }).allowed;
   if (!canDispatch()) {
+    void host.refreshChatProviderUsage?.();
     return false;
   }
   setChatError(host, null, true);
@@ -536,6 +545,9 @@ export async function switchChatModel(
       );
     } finally {
       clearPendingSwitch();
+      if (ownsSelection()) {
+        void host.refreshChatProviderUsage?.();
+      }
       host.requestUpdate?.();
     }
   })();

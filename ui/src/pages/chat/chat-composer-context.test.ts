@@ -43,6 +43,53 @@ afterEach(async () => {
 });
 
 describe("renderChatComposer context usage", () => {
+  it.each([false, true])(
+    "uses execution quota, never a same-email Free login, when unavailable=%s",
+    (unavailable) => {
+      const container = renderComposer({
+        selectedSession: sessionRow({
+          modelProvider: "openai",
+          totalTokens: 40_000,
+          contextTokens: 200_000,
+        }),
+        providerUsage: {
+          ...planUsage([
+            planProvider("openai", "OpenAI", {
+              providerId: "openai",
+              plan: "free",
+              accountEmail: "same@example.com",
+              windows: [{ label: "720h", usedPercent: 0 }],
+            }),
+          ]),
+          sessionUsage: unavailable
+            ? null
+            : {
+                updatedAt: 1,
+                providers: [
+                  {
+                    provider: "openai",
+                    displayName: "OpenAI",
+                    plan: "pro",
+                    accountEmail: "same@example.com",
+                    windows: [{ label: "Week", usedPercent: 29 }],
+                  },
+                ],
+              },
+        },
+      });
+      expect(container.textContent).not.toContain("720h");
+      expect(container.textContent).not.toContain("free");
+      expect(container.querySelector("[data-chat-provider-usage='true']")).toBeNull();
+      if (unavailable) {
+        expect(container.textContent).not.toContain("Week");
+      } else {
+        expect(container.textContent).toContain("Week");
+        expect(
+          container.querySelector(".context-usage__limit-bar")?.getAttribute("aria-valuenow"),
+        ).toBe("29");
+      }
+    },
+  );
   it("renders native context-only events for the active run without mixing billing totals", () => {
     const container = renderComposer({
       selectedSession: sessionRow({
