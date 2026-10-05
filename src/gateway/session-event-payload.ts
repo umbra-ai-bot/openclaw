@@ -108,14 +108,15 @@ function buildGatewaySessionEventFields(params: {
     systemSent: sessionRow.systemSent,
     abortedLastRun: sessionRow.abortedLastRun,
     restartRecoveryStatus: sessionRow.restartRecoveryStatus ?? null,
-    inputTokens: sessionRow.inputTokens,
-    outputTokens: sessionRow.outputTokens,
+    inputTokens: sessionRow.inputTokens ?? null,
+    outputTokens: sessionRow.outputTokens ?? null,
     lastChannel: sessionRow.lastChannel,
     lastTo: sessionRow.lastTo,
     lastAccountId: sessionRow.lastAccountId,
     lastThreadId: sessionRow.lastThreadId,
-    totalTokens: sessionRow.totalTokens,
-    totalTokensFresh: sessionRow.totalTokensFresh,
+    totalTokens: sessionRow.totalTokens ?? null,
+    totalTokensFresh:
+      sessionRow.totalTokensFresh ?? (sessionRow.totalTokens === undefined ? false : undefined),
     ...(omitUnscopedGlobalGoal ? {} : { goal: sessionRow.goal ?? null }),
     contextTokens: sessionRow.contextTokens,
     contextBudgetStatus: sessionRow.contextBudgetStatus ?? null,
@@ -184,7 +185,7 @@ export function buildGatewaySessionSnapshot(params: {
   }
   if (params.lifecycle && sessionRow.totalTokensFresh !== true) {
     delete sessionRow.totalTokens;
-    delete sessionRow.totalTokensFresh;
+    sessionRow.totalTokensFresh = false;
     delete sessionRow.contextTokens;
     delete sessionRow.estimatedCostUsd;
   }

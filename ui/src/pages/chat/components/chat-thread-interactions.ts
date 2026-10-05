@@ -38,7 +38,7 @@ import type { ChatTypingActorView, ChatTypingOverflow } from "../chat-typing-pre
 import type { LinkFaviconFetcher } from "../link-favicon-loader.ts";
 import type { ChatRunUiStatus } from "../run-lifecycle.ts";
 import type { RealtimeTalkConversationEntry } from "../talk/conversation.ts";
-import type { CompactionStatus, RunOutputUsage } from "../tool-stream-contract.ts";
+import type { CompactionStatus, RunUsage } from "../tool-stream-contract.ts";
 import type { AsyncQuestionDraft, AsyncQuestionPresentation } from "./chat-async-question.types.ts";
 import { resolveChatContextCopy, usesNativeContextMenu } from "./chat-context-copy.ts";
 import type { ChatHistoryBoundaryProps } from "./chat-history-boundary.ts";
@@ -129,7 +129,7 @@ export type ChatThreadProps = ChatSendStatusActions & {
   streamStartedAt: number | null;
   /** Browser-local active run identity, retained across transient disconnects. */
   runId?: string | null;
-  runUsageById?: ReadonlyMap<string, RunOutputUsage>;
+  runUsageById?: ReadonlyMap<string, RunUsage>;
   runStatus?: ChatRunUiStatus | null;
   queue: ChatQueueItem[];
   initialTurnId?: string;

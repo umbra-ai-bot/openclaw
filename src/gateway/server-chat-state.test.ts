@@ -209,6 +209,41 @@ describe("createChatRunState", () => {
     },
   );
 
+  it.each(["full", "summary"] as const)(
+    "invalidates pre-compaction context in %s recovery without erasing run billing",
+    (mode) => {
+      const state = createChatRunState();
+      const event = (seq: number, stream: string, data: Record<string, unknown>) =>
+        state.recordProgressEvent("run-1", { runId: "run-1", seq, stream, ts: seq, data }, mode);
+      event(1, "usage", {
+        activeContextTokens: 200_000,
+        modelContextWindow: 258_400,
+        inputTokens: 190_000,
+        outputTokens: 50,
+      });
+      event(2, "compaction", { phase: "start" });
+      event(3, "usage", { outputTokens: 60 });
+      const recovered = state.runs
+        .get("run-1")
+        ?.progressSnapshot?.events.find((item) => item.stream === "usage");
+      expect(recovered).toMatchObject({
+        seq: 3,
+        data: { activeContextTokens: null, modelContextWindow: 258_400, outputTokens: 60 },
+      });
+      expect(recovered?.data.inputTokens).toBeUndefined();
+      event(4, "usage", { activeContextTokens: 20_000, inputTokens: 19_000 });
+      expect(
+        state.runs.get("run-1")?.progressSnapshot?.events.find((item) => item.stream === "usage")
+          ?.data,
+      ).toEqual({
+        activeContextTokens: 20_000,
+        modelContextWindow: 258_400,
+        inputTokens: 19_000,
+        outputTokens: 60,
+      });
+    },
+  );
+
   it.each(["waiting_for_state", "preparing_context", "memory_flushing"])(
     "retains only the latest startup status (%s) until observable run activity begins",
     (phase) => {

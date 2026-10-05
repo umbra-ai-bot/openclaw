@@ -1,3 +1,4 @@
+import { asSafeIntegerInRange } from "@openclaw/normalization-core/number-coercion";
 import { asNullableObjectRecord as readRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeNullableString as toTrimmedString } from "@openclaw/normalization-core/string-coerce";
 import { Value } from "typebox/value";
@@ -259,7 +260,8 @@ function acceptActivityEvent(host: ToolStreamHost, payload: AgentEventPayload): 
 }
 
 function handleUsageEvent(host: ToolStreamHost, payload: AgentEventPayload): boolean {
-  if (payload.stream !== "usage") {
+  const invalidatesContext = payload.stream === "compaction" && payload.data.phase === "start";
+  if (payload.stream !== "usage" && !invalidatesContext) {
     return false;
   }
   const sessionKey = toTrimmedString(payload.sessionKey);
@@ -270,28 +272,43 @@ function handleUsageEvent(host: ToolStreamHost, payload: AgentEventPayload): boo
   } else if (!host.chatRunId || payload.runId !== host.chatRunId) {
     return true;
   }
-  const rawOutputTokens = payload.data?.outputTokens;
-  if (typeof rawOutputTokens !== "number" || !Number.isFinite(rawOutputTokens)) {
-    return true;
-  }
-  const outputTokens = Math.floor(rawOutputTokens);
-  if (outputTokens < 0) {
-    return true;
-  }
   const current = host.chatRunUsageById?.get(payload.runId);
-  if (current && payload.seq <= current.seq) {
+  if (!Number.isSafeInteger(payload.seq) || (current && payload.seq <= current.seq)) {
+    return !invalidatesContext;
+  }
+  const data = payload.data;
+  const outputTokens = asSafeIntegerInRange(data.outputTokens, { min: 0 });
+  const observesContext = "activeContextTokens" in data || "modelContextWindow" in data;
+  if (!invalidatesContext && !observesContext && outputTokens === undefined) {
     return true;
   }
+  const totalTokens = asSafeIntegerInRange(data.activeContextTokens, { min: 0 });
+  const modelContextWindow = asSafeIntegerInRange(data.modelContextWindow, { min: 1 });
+  const inputTokens = asSafeIntegerInRange(data.inputTokens, { min: 0 });
+  const context =
+    invalidatesContext || totalTokens === undefined
+      ? null
+      : {
+          totalTokens,
+          ...(modelContextWindow !== undefined ? { modelContextWindow } : {}),
+          ...(inputTokens !== undefined ? { inputTokens } : {}),
+        };
   // Keep the sequence with its count across stream resets and terminal events:
   // recovery snapshots must not overwrite newer live usage or erase the recap.
   const usageByRun = new Map(host.chatRunUsageById);
   usageByRun.delete(payload.runId);
-  usageByRun.set(payload.runId, { outputTokens, seq: payload.seq });
+  usageByRun.set(payload.runId, {
+    ...current,
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+    ...(invalidatesContext || observesContext ? { context } : {}),
+    seq: payload.seq,
+  });
   for (const staleRunId of [...usageByRun.keys()].slice(0, -RUN_USAGE_LIMIT)) {
     usageByRun.delete(staleRunId);
   }
   host.chatRunUsageById = usageByRun;
-  return true;
+  // Compaction presentation still belongs to the existing status owner.
+  return !invalidatesContext;
 }
 
 function handleNoticeEvent(host: ToolStreamHost, payload: AgentEventPayload): boolean {

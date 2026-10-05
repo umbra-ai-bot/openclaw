@@ -137,6 +137,59 @@ describe("preserveRosterPresentationMetadata", () => {
   });
 });
 
+test("sessions.changed clears unavailable usage without retaining an old zero", () => {
+  const key = "agent:main:usage";
+  const result = buildResult([
+    {
+      key,
+      kind: "direct",
+      updatedAt: 1,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      totalTokensFresh: true,
+    },
+  ]);
+  const cleared = reconcileSessionChanged(result, {
+    sessionKey: key,
+    reason: "patch",
+    updatedAt: 2,
+    session: {
+      key,
+      kind: "direct",
+      updatedAt: 2,
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      totalTokensFresh: false,
+    },
+  } as never);
+  const row = cleared.result?.sessions[0];
+  expect(row?.inputTokens).toBeUndefined();
+  expect(row?.outputTokens).toBeUndefined();
+  expect(row?.totalTokens).toBeUndefined();
+  const observed = reconcileSessionChanged(cleared.result ?? null, {
+    sessionKey: key,
+    reason: "patch",
+    updatedAt: 3,
+    session: {
+      key,
+      kind: "direct",
+      updatedAt: 3,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      totalTokensFresh: true,
+    },
+  });
+  expect(observed.result?.sessions[0]).toMatchObject({
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    totalTokensFresh: true,
+  });
+});
+
 test("sessions.changed removes a label when the event carries null", () => {
   const result = buildResult([
     {

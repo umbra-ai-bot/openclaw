@@ -16,7 +16,7 @@ import type { ChatRunStartupState } from "./chat-run-startup.ts";
 import type { ChatRunError, LocalTerminalReconcile } from "./run-lifecycle.ts";
 import type { ChatMessageCache } from "./session-message-cache.ts";
 import type { StreamCausalBoundaryState } from "./stream-causal-boundary.ts";
-import type { ProviderPolicyNotice, RunOutputUsage } from "./tool-stream-contract.ts";
+import type { ProviderPolicyNotice, RunUsage } from "./tool-stream-contract.ts";
 
 type ChatAgentsListSnapshot = Partial<Omit<AgentsListResult, "agents">> & {
   agents?: AgentsListResult["agents"];
@@ -63,7 +63,7 @@ export type ChatState = StreamCausalBoundaryState & {
   /** True when the active run was recovered from the embedded-run registry and
    * Stop must use the session-owned abort path (sessions.abort), not chat.abort. */
   chatRunSessionAbortable?: boolean;
-  chatRunUsageById?: Map<string, RunOutputUsage>;
+  chatRunUsageById?: Map<string, RunUsage>;
   providerPolicyNotice?: ProviderPolicyNotice | null;
   /** Producer-cumulative text; visible tails derive from the segment baseline. */
   chatStream: string | null;

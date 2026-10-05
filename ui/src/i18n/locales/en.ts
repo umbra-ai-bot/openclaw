@@ -3966,6 +3966,8 @@ export const en: TranslationMap & {
         title: "Context usage details",
         open: "Open context usage details",
         summary: "Session context usage: {used} of {limit} ({pct}%)",
+        unavailableSummary: "Session context usage unavailable",
+        unavailable: "Unavailable",
         contextWindow: "Context window",
         promptBudget: "Prompt budget",
         latestRunTokens: "Latest run tokens",

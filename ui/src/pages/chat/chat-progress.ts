@@ -4,7 +4,7 @@ import type { GatewaySessionRow } from "../../api/types.ts";
 import { t } from "../../i18n/index.ts";
 import type { ChatGuardianNotice, ChatItem, ChatQueueItem } from "../../lib/chat/chat-types.ts";
 import { formatCompactTokenCount } from "../../lib/format.ts";
-import type { CompactionStatus, RunOutputUsage } from "./tool-stream-contract.ts";
+import type { CompactionStatus, RunUsage } from "./tool-stream-contract.ts";
 
 type WorkingProgress = {
   key: string;
@@ -270,7 +270,7 @@ export function resolveTurnRecap(
     gatewayClient?: GatewayBrowserClient | null;
     indicator?: { runId?: string };
     row?: Pick<GatewaySessionRow, "lastRunId" | "status" | "runtimeMs">;
-    usageByRun?: ReadonlyMap<string, RunOutputUsage>;
+    usageByRun?: ReadonlyMap<string, RunUsage>;
   },
 ): (TurnRecap & { runId: string }) | null {
   const { sessionKey, agentId = null, gatewayClient = null, indicator, row, usageByRun } = params;

@@ -1,10 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { updateChatRunProgressSnapshot } from "../../../../src/gateway/server-chat-progress-snapshot.js";
 import { resetToolStream } from "./tool-stream-state.ts";
 import { createHost } from "./tool-stream.test-helpers.ts";
 import { handleAgentEvent } from "./tool-stream.ts";
 
 type AgentEvent = NonNullable<Parameters<typeof handleAgentEvent>[1]>;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 function agentEvent(
   runId: string,
@@ -24,6 +30,138 @@ function agentEvent(
 }
 
 describe("app-tool-stream run usage", () => {
+  it.each(["full", "summary"] as const)(
+    "keeps %s Gateway recovery context unavailable after compaction",
+    (mode) => {
+      const context = agentEvent(
+        "native-run",
+        1,
+        "usage",
+        { activeContextTokens: 200_000, modelContextWindow: 258_400, outputTokens: 50 },
+        "main",
+      );
+      let snapshot = updateChatRunProgressSnapshot(undefined, context, mode);
+      snapshot = updateChatRunProgressSnapshot(
+        snapshot,
+        agentEvent("native-run", 2, "compaction", { phase: "start" }, "main"),
+        mode,
+      );
+      snapshot = updateChatRunProgressSnapshot(
+        snapshot,
+        agentEvent("native-run", 3, "usage", { outputTokens: 60 }, "main"),
+        mode,
+      );
+      const host = createHost({ chatRunId: "native-run" });
+      for (const event of snapshot?.events ?? []) {
+        handleAgentEvent(host, event);
+      }
+      expect(host.chatRunUsageById?.get("native-run")).toMatchObject({
+        outputTokens: 60,
+        context: null,
+      });
+      handleAgentEvent(host, context);
+      expect(host.chatRunUsageById?.get("native-run")?.context).toBeNull();
+    },
+  );
+
+  it("retains native context-only events without inventing output usage", () => {
+    const host = createHost({ chatRunId: "native-run" });
+    handleAgentEvent(
+      host,
+      agentEvent(
+        "native-run",
+        1,
+        "usage",
+        {
+          activeContextTokens: 105_455,
+          modelContextWindow: 258_400,
+          inputTokens: 104_000,
+        },
+        "main",
+      ),
+    );
+    expect(host.chatRunUsageById?.get("native-run")).toEqual({
+      seq: 1,
+      context: { totalTokens: 105_455, modelContextWindow: 258_400, inputTokens: 104_000 },
+    });
+  });
+
+  it("keeps context separate from output billing and fences older recovery snapshots", () => {
+    const host = createHost({ chatRunId: "native-run" });
+    handleAgentEvent(
+      host,
+      agentEvent(
+        "native-run",
+        5,
+        "usage",
+        {
+          activeContextTokens: 80_000,
+          modelContextWindow: 258_400,
+        },
+        "main",
+      ),
+    );
+    handleAgentEvent(host, agentEvent("native-run", 6, "usage", { outputTokens: 400_000 }, "main"));
+    resetToolStream(host);
+    handleAgentEvent(
+      host,
+      agentEvent(
+        "native-run",
+        4,
+        "usage",
+        {
+          activeContextTokens: 190_000,
+          modelContextWindow: 258_400,
+        },
+        "main",
+      ),
+    );
+    expect(host.chatRunUsageById?.get("native-run")).toEqual({
+      seq: 6,
+      outputTokens: 400_000,
+      context: { totalTokens: 80_000, modelContextWindow: 258_400 },
+    });
+  });
+
+  it("invalidates pre-compaction context until a new native observation arrives", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    const host = createHost({ chatRunId: "native-run" });
+    handleAgentEvent(
+      host,
+      agentEvent(
+        "native-run",
+        1,
+        "usage",
+        {
+          activeContextTokens: 200_000,
+          outputTokens: 50,
+        },
+        "main",
+      ),
+    );
+    handleAgentEvent(host, agentEvent("native-run", 2, "compaction", { phase: "start" }, "main"));
+    handleAgentEvent(host, agentEvent("native-run", 3, "usage", { outputTokens: 60 }, "main"));
+    expect(host.chatRunUsageById?.get("native-run")?.context).toBeNull();
+    handleAgentEvent(
+      host,
+      agentEvent(
+        "native-run",
+        4,
+        "usage",
+        {
+          activeContextTokens: 20_000,
+          modelContextWindow: 258_400,
+        },
+        "main",
+      ),
+    );
+    expect(host.chatRunUsageById?.get("native-run")).toMatchObject({
+      outputTokens: 60,
+      context: { totalTokens: 20_000 },
+    });
+  });
+
   it("bounds retained usage while keeping the most recently updated run", () => {
     const host = createHost();
     for (let index = 0; index < 60; index++) {

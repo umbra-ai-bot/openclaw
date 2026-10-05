@@ -78,7 +78,7 @@ import {
   openSlot,
   sidebarDashboardPresentation,
 } from "./sidebar-layout.ts";
-import type { RunOutputUsage } from "./tool-stream-contract.ts";
+import type { RunUsage } from "./tool-stream-contract.ts";
 import { resetToolStream } from "./tool-stream-state.ts";
 
 function cancelPendingQueuedChatInput(state: ChatPageHost, id: string): boolean {
@@ -246,7 +246,7 @@ export function createPageState(
     chatEffectiveQueueMode: undefined,
     chatAttachments: [],
     chatRunId: null,
-    chatRunUsageById: new Map<string, RunOutputUsage>(),
+    chatRunUsageById: new Map<string, RunUsage>(),
     chatStream: null,
     chatStreamStartedAt: null,
     chatRunStartup: null,
