@@ -42,13 +42,10 @@ import { applySelectedSessionProjection, dismissChatError } from "./chat-pane-st
 import { markQueuedChatSendsWaitingForReconnect } from "./chat-queue-reconnect.ts";
 import { stopChatRealtimeTalk } from "./chat-realtime.ts";
 import { flushChatQueueForEvent, resumeStoredChatOutboxes } from "./chat-send-actions.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import { retireChatModelSelectionOwnership } from "./chat-session.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
-import {
-  refreshChatModelAuthStatus,
-  refreshPageChat,
-  retireChatMetadataRequests,
-} from "./chat-state-refresh.ts";
+import { refreshPageChat, retireChatMetadataRequests } from "./chat-state-refresh.ts";
 import { requestChatPageUpdate } from "./chat-state-render.ts";
 import { resolveChatAgentId, selectedChatSessionRow } from "./chat-state-route.ts";
 import { releaseChatMediaResourceSubscriber } from "./components/chat-message-media.ts";

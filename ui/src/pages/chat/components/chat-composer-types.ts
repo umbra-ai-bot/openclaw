@@ -31,7 +31,7 @@ import type { RealtimeTalkConversationEntry } from "../talk/conversation.ts";
 import type { RealtimeTalkCameraDevice } from "../talk/input.ts";
 import type { RealtimeTalkLevelSignal } from "../talk/level.ts";
 import type { RealtimeTalkStatus } from "../talk/session.ts";
-import type { FallbackStatus } from "../tool-stream-contract.ts";
+import type { FallbackStatus, RunUsage } from "../tool-stream-contract.ts";
 import type { AsyncQuestionPresentation } from "./chat-async-question.types.ts";
 import type { ChatAttachmentControlsProps } from "./chat-attachment-controls.types.ts";
 import type { ComposerEmojiMenu } from "./chat-composer-emoji.ts";
@@ -106,6 +106,7 @@ export type ChatComposerProps = ChatAttachmentControlsProps & {
   readingHistory?: boolean;
   onProgressManipulate?: () => void;
   runId?: string | null;
+  runUsageById?: ReadonlyMap<string, RunUsage>;
   onDismissProgressCard?: (card: ProgressCard) => void;
   /** The pane scopes Gateway questions to this conversation's agent and session. */
   gatewayQuestionPrompts?: readonly QuestionPrompt[];

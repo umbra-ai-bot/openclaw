@@ -131,6 +131,7 @@ export function renderChatComposer(props: ChatComposerProps) {
     {
       messages: props.messages,
       providerUsage: props.providerUsage,
+      liveUsage: props.runActive && props.runId ? props.runUsageById?.get(props.runId) : undefined,
     },
   );
   const composerControls = props.composerControls ?? nothing;

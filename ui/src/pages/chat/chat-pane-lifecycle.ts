@@ -52,6 +52,7 @@ import {
   subscribeChatPaneStartup,
 } from "./chat-pane-startup-subscriptions.ts";
 import { getChatPendingInputs } from "./chat-pending-inputs.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import { cancelChatModelRecovery } from "./chat-session.ts";
 import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import { createPageState } from "./chat-state-page.ts";
@@ -536,6 +537,9 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
         // A retained pane owns one conversation for its lifetime. Only its
         // canonical spelling can change after Gateway defaults resolve.
         this.state.sessionKey = nextSessionKey;
+        if (this.state.chatSessionUsage?.sessionKey !== nextSessionKey) {
+          void refreshChatModelAuthStatus(this.state).finally(() => this.requestUpdate());
+        }
         const nextAgentId = parseAgentSessionKey(nextSessionKey)?.agentId;
         if (nextAgentId) {
           applyChatAgentOwnerTransition(this.state, nextAgentId);

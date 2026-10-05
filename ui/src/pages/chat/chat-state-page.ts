@@ -37,6 +37,7 @@ import {
 } from "./chat-send-actions.ts";
 import { handleSendChat } from "./chat-send-submit.ts";
 import { OFFLINE_QUEUE_STORAGE_ERROR } from "./chat-send-support.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import { retireChatModelSelectionOwnership } from "./chat-session.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { selectedChatSessionRow } from "./chat-state-route.ts";
@@ -78,7 +79,7 @@ import {
   openSlot,
   sidebarDashboardPresentation,
 } from "./sidebar-layout.ts";
-import type { RunOutputUsage } from "./tool-stream-contract.ts";
+import type { RunUsage } from "./tool-stream-contract.ts";
 import { resetToolStream } from "./tool-stream-state.ts";
 
 function cancelPendingQueuedChatInput(state: ChatPageHost, id: string): boolean {
@@ -246,7 +247,7 @@ export function createPageState(
     chatEffectiveQueueMode: undefined,
     chatAttachments: [],
     chatRunId: null,
-    chatRunUsageById: new Map<string, RunOutputUsage>(),
+    chatRunUsageById: new Map<string, RunUsage>(),
     chatStream: null,
     chatStreamStartedAt: null,
     chatRunStartup: null,
@@ -280,6 +281,7 @@ export function createPageState(
     modelAuthStatusRequestVersion: 0,
     modelAuthStatusResult: null,
     modelAuthStatusError: null,
+    chatSessionUsage: undefined,
     sessionsResult: null,
     sessionsResultAgentId: null,
     sessionsLoading: false,
@@ -635,5 +637,6 @@ export function createPageState(
     invalidateImageLightbox(state);
     renderLifecycle.invalidate();
   };
+  state.refreshChatProviderUsage = () => refreshChatModelAuthStatus(state);
   return state;
 }

@@ -44,7 +44,16 @@ export type ToolStreamEntry = {
   message: Record<string, unknown>;
 };
 
-export type RunOutputUsage = { outputTokens: number; seq: number };
+export type RunUsage = {
+  outputTokens?: number;
+  seq: number;
+  /** Latest provider context observation, separate from accumulated run billing. */
+  context?: {
+    totalTokens: number;
+    modelContextWindow?: number;
+    inputTokens?: number;
+  } | null;
+};
 
 export type ProviderPolicyNotice = {
   runId: string;
@@ -86,7 +95,7 @@ export type ToolStreamHost = {
   chatRunId: string | null;
   chatQueue?: readonly ChatQueueItem[];
   chatMessages?: unknown[];
-  chatRunUsageById?: Map<string, RunOutputUsage>;
+  chatRunUsageById?: Map<string, RunUsage>;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
   chatRunStartup?: ChatRunStartupState | null;

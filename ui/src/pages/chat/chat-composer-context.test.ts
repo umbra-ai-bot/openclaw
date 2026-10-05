@@ -43,6 +43,159 @@ afterEach(async () => {
 });
 
 describe("renderChatComposer context usage", () => {
+  it.each([false, true])(
+    "uses execution quota, never a same-email Free login, when unavailable=%s",
+    (unavailable) => {
+      const container = renderComposer({
+        selectedSession: sessionRow({
+          modelProvider: "openai",
+          totalTokens: 40_000,
+          contextTokens: 200_000,
+        }),
+        providerUsage: {
+          ...planUsage([
+            planProvider("openai", "OpenAI", {
+              providerId: "openai",
+              plan: "free",
+              accountEmail: "same@example.com",
+              windows: [{ label: "720h", usedPercent: 0 }],
+            }),
+          ]),
+          sessionUsage: unavailable
+            ? null
+            : {
+                updatedAt: 1,
+                providers: [
+                  {
+                    provider: "openai",
+                    displayName: "OpenAI",
+                    plan: "pro",
+                    accountEmail: "same@example.com",
+                    windows: [{ label: "Week", usedPercent: 29 }],
+                  },
+                ],
+              },
+        },
+      });
+      expect(container.textContent).not.toContain("720h");
+      expect(container.textContent).not.toContain("free");
+      expect(container.querySelector("[data-chat-provider-usage='true']")).toBeNull();
+      if (unavailable) {
+        expect(container.textContent).not.toContain("Week");
+      } else {
+        expect(container.textContent).toContain("Week");
+        expect(
+          container.querySelector(".context-usage__limit-bar")?.getAttribute("aria-valuenow"),
+        ).toBe("29");
+      }
+    },
+  );
+  it("renders native context-only events for the active run without mixing billing totals", () => {
+    const container = renderComposer({
+      selectedSession: sessionRow({
+        totalTokens: 0,
+        totalTokensFresh: false,
+        contextTokens: 272_000,
+        inputTokens: 1,
+        outputTokens: 5,
+      }),
+      runActive: true,
+      runId: "active-run",
+      runUsageById: new Map([
+        [
+          "active-run",
+          {
+            seq: 3,
+            outputTokens: 400_000,
+            context: { totalTokens: 105_455, modelContextWindow: 258_400, inputTokens: 104_000 },
+          },
+        ],
+        ["foreign-run", { seq: 9, context: { totalTokens: 200_000, modelContextWindow: 258_400 } }],
+      ]),
+    });
+    expect(container.querySelector(".context-ring")?.getAttribute("aria-label")).toBe(
+      "Session context usage: 105.5k of 258.4k (41%)",
+    );
+    expect(container.querySelector(".context-usage__bar")?.getAttribute("aria-valuenow")).toBe(
+      "41",
+    );
+    expect(container.textContent).not.toContain("400k");
+  });
+
+  it("uses settled session context rather than a retained prior-run observation", () => {
+    const container = renderComposer({
+      selectedSession: sessionRow({
+        totalTokens: 20_000,
+        totalTokensFresh: true,
+        contextTokens: 200_000,
+      }),
+      runActive: false,
+      runId: "previous-run",
+      runUsageById: new Map([
+        [
+          "previous-run",
+          { seq: 3, context: { totalTokens: 190_000, modelContextWindow: 200_000 } },
+        ],
+      ]),
+    });
+    expect(container.querySelector(".context-usage__bar")?.getAttribute("aria-valuenow")).toBe(
+      "10",
+    );
+  });
+
+  it("does not fall back to pre-compaction session usage when live context is invalidated", () => {
+    const container = renderComposer({
+      selectedSession: sessionRow({
+        totalTokens: 190_000,
+        totalTokensFresh: true,
+        contextTokens: 200_000,
+      }),
+      runActive: true,
+      runId: "active-run",
+      runUsageById: new Map([["active-run", { seq: 3, context: null }]]),
+    });
+    expect(container.querySelector(".context-usage__context-value")?.textContent).toBe(
+      "Unavailable",
+    );
+    expect(container.querySelector(".context-usage__bar")).toBeNull();
+  });
+
+  it.each([undefined, 0])(
+    "shows unavailable for missing or stale zero context (%s)",
+    (totalTokens) => {
+      const container = renderComposer({
+        selectedSession: sessionRow({
+          totalTokens,
+          totalTokensFresh: false,
+          contextTokens: 200_000,
+        }),
+      });
+      expect(container.querySelector(".context-ring")?.getAttribute("aria-label")).toBe(
+        "Session context usage unavailable",
+      );
+      expect(container.querySelector(".context-usage__context-value")?.textContent).toBe(
+        "Unavailable",
+      );
+      expect(container.querySelector(".context-usage__bar")).toBeNull();
+      expect(container.querySelector(".context-usage__context-value")?.textContent).not.toContain(
+        "0%",
+      );
+    },
+  );
+
+  it("keeps an observed fresh zero distinct from unavailable context", () => {
+    const container = renderComposer({
+      selectedSession: sessionRow({
+        totalTokens: 0,
+        totalTokensFresh: true,
+        contextTokens: 200_000,
+      }),
+    });
+    expect(container.querySelector(".context-ring")?.getAttribute("aria-label")).toBe(
+      "Session context usage: 0 of 200k (0%)",
+    );
+    expect(container.querySelector(".context-usage__bar")?.getAttribute("aria-valuenow")).toBe("0");
+  });
   it.each([true, false])("uses the last-run prompt budget with fresh usage %s", (fresh) => {
     const container = renderComposer({
       selectedSession: sessionRow({

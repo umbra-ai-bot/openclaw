@@ -9,6 +9,7 @@ import { t } from "../../../i18n/index.ts";
 import { formatCompactTokenCount, formatCost } from "../../../lib/format.ts";
 import { isMonitoredAuthProvider } from "../../../lib/model-auth.ts";
 import {
+  sessionUsageQuotaStatus,
   collectProviderQuotaGroups,
   formatQuotaReset,
   type ProviderQuotaGroup,
@@ -17,6 +18,7 @@ import {
   type QuotaLimitSummary,
 } from "../../../lib/provider-quota-summary.ts";
 import { resolveSessionContextLimit } from "../../../lib/sessions/context-budget.ts";
+import type { RunUsage } from "../tool-stream-contract.ts";
 import { handleChatComposerDetailsToggle, syncChatPickerOverlay } from "./chat-picker-overlay.ts";
 
 const CONTEXT_NOTICE_RATIO = 0.85;
@@ -24,6 +26,7 @@ const CONTEXT_NOTICE_RATIO = 0.85;
 type ContextNoticeOptions = {
   messages?: unknown[];
   providerUsage?: ProviderUsageDisplayProps;
+  liveUsage?: RunUsage;
 };
 
 type ProviderCostStats = {
@@ -73,6 +76,7 @@ function latestAssistantProvider(messages: unknown[] | undefined): string | null
 function getContextNoticeViewModel(
   session: GatewaySessionRow | undefined,
   defaultContextTokens: number | null,
+  liveUsage?: RunUsage,
 ): {
   pct: number;
   used: number;
@@ -87,24 +91,47 @@ function getContextNoticeViewModel(
   approximate: boolean;
   fromLastPrompt: boolean;
 } | null {
-  const used = session?.totalTokens;
-  const { tokens: limit, fromLastPrompt } = resolveSessionContextLimit(
-    session,
-    defaultContextTokens,
-  );
-  if (typeof used !== "number" || !Number.isFinite(used) || used < 0 || !limit) {
+  if (liveUsage?.context === null) {
     return null;
   }
-  const approximate = session?.totalTokensFresh === false;
+  const context = liveUsage?.context;
+  const used = context?.totalTokens ?? session?.totalTokens;
+  const budget = resolveSessionContextLimit(session, defaultContextTokens);
+  const fromLastPrompt = budget.fromLastPrompt;
+  const limit = context?.modelContextWindow
+    ? fromLastPrompt
+      ? Math.min(budget.tokens, context.modelContextWindow)
+      : context.modelContextWindow
+    : budget.tokens;
+  if (
+    typeof used !== "number" ||
+    !Number.isFinite(used) ||
+    used < 0 ||
+    !limit ||
+    (!context && used === 0 && session?.totalTokensFresh === false)
+  ) {
+    return null;
+  }
+  const approximate = !context && session?.totalTokensFresh === false;
   const ratio = used / limit;
   const pct = Math.min(Math.round(ratio * 100), 100);
   // A stale total is still useful orientation, but must not drive warning or
   // compaction decisions because the session may already have compacted.
   const warning = !approximate && ratio >= CONTEXT_NOTICE_RATIO;
   // Session rows expose the latest run snapshot; totalTokens is the separate context snapshot.
-  const input = Number.isFinite(session?.inputTokens) ? (session?.inputTokens ?? null) : null;
-  const output = Number.isFinite(session?.outputTokens) ? (session?.outputTokens ?? null) : null;
+  const input = context
+    ? (context.inputTokens ?? null)
+    : Number.isFinite(session?.inputTokens)
+      ? (session?.inputTokens ?? null)
+      : null;
+  // Live output is accumulated across the run, not the last context observation.
+  const output = context
+    ? null
+    : Number.isFinite(session?.outputTokens)
+      ? (session?.outputTokens ?? null)
+      : null;
   const cost =
+    !context &&
     typeof session?.estimatedCostUsd === "number" &&
     Number.isFinite(session.estimatedCostUsd) &&
     session.estimatedCostUsd >= 0
@@ -240,19 +267,25 @@ function renderQuotaBudgetRow(budget: QuotaBudgetSummary) {
   `;
 }
 
-function renderQuotaGroup(group: ProviderQuotaGroup, usageHref: string) {
+function renderQuotaGroup(group: ProviderQuotaGroup, usageHref: string | null) {
   return html`
     <div class="context-usage__section-label context-usage__plan-header">
       <span>${t("chat.composer.contextUsage.planUsage")}</span>
-      <a
-        class="context-usage__plan-link"
-        href=${usageHref}
-        data-chat-provider-usage="true"
-        aria-label=${t("chat.composer.contextUsage.openUsage")}
-      >
-        ${group.plan ? html`<span class="context-usage__plan-badge">${group.plan}</span>` : nothing}
-        ${icons.externalLink}
-      </a>
+      ${
+        usageHref
+          ? html`<a
+              class="context-usage__plan-link"
+              href=${usageHref}
+              data-chat-provider-usage="true"
+              aria-label=${t("chat.composer.contextUsage.openUsage")}
+            >
+              ${group.plan ? html`<span class="context-usage__plan-badge">${group.plan}</span>` : nothing}
+              ${icons.externalLink}
+            </a>`
+          : group.plan
+            ? html`<span class="context-usage__plan-badge">${group.plan}</span>`
+            : nothing
+      }
     </div>
     ${
       group.accountEmail
@@ -277,11 +310,13 @@ export function renderContextNotice(
   defaultContextTokens: number | null,
   options: ContextNoticeOptions = {},
 ) {
-  const model = getContextNoticeViewModel(session, defaultContextTokens);
+  const model = getContextNoticeViewModel(session, defaultContextTokens, options.liveUsage);
   const quotaGroups = options.providerUsage
     ? collectProviderQuotaGroups(
-        options.providerUsage.modelAuthStatusResult ?? null,
-        isMonitoredAuthProvider,
+        options.providerUsage.sessionUsage !== undefined
+          ? sessionUsageQuotaStatus(options.providerUsage.sessionUsage)
+          : (options.providerUsage.modelAuthStatusResult ?? null),
+        options.providerUsage.sessionUsage !== undefined ? () => true : isMonitoredAuthProvider,
       )
     : [];
   const currentProvider =
@@ -292,7 +327,7 @@ export function renderContextNotice(
         group.providers.some((id) => id.trim().toLowerCase() === normalizedProvider),
       )
     : undefined;
-  if (!model && !currentGroup) {
+  if (!session && !model && !currentGroup) {
     return nothing;
   }
   const summary = model
@@ -301,7 +336,9 @@ export function renderContextNotice(
         limit: formatCompactTokenCount(model.limit),
         pct: `${model.approximate ? "~" : ""}${model.pct}`,
       })
-    : t("chat.usageRemaining");
+    : session
+      ? t("chat.composer.contextUsage.unavailableSummary")
+      : t("chat.usageRemaining");
   const percentage = model ? `${model.approximate ? "~" : ""}${model.pct}%` : null;
   const dashOffset = model ? RING_CIRCUMFERENCE * (1 - model.pct / 100) : RING_CIRCUMFERENCE;
   const providerCosts = model ? latestProviderCostStats(options.messages) : null;
@@ -389,7 +426,18 @@ export function renderContextNotice(
                       <span style="width: ${model.pct}%"></span>
                     </div>
                   `
-                : nothing
+                : session
+                  ? html`
+                      <div class="context-usage__header">
+                        <span class="context-usage__title"
+                          >${t("chat.composer.contextUsage.contextWindow")}</span
+                        >
+                        <strong class="context-usage__context-value"
+                          >${t("chat.composer.contextUsage.unavailable")}</strong
+                        >
+                      </div>
+                    `
+                  : nothing
             }
             ${
               model
@@ -435,7 +483,14 @@ export function renderContextNotice(
                   `
                 : nothing
             }
-            ${currentGroup ? renderQuotaGroup(currentGroup, usageHref) : nothing}
+            ${
+              currentGroup
+                ? renderQuotaGroup(
+                    currentGroup,
+                    options.providerUsage?.sessionUsage !== undefined ? null : usageHref,
+                  )
+                : nothing
+            }
           </section>
         </wa-popup>
       </details>

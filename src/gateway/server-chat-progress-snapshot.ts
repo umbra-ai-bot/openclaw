@@ -160,7 +160,8 @@ export function updateChatRunProgressSnapshot(
   if (isItem && !isPreamble && !validItem) {
     return snapshot;
   }
-  const isUsage = event.stream === "usage";
+  const invalidatesContext = event.stream === "compaction" && phase === "start";
+  const isUsage = event.stream === "usage" || invalidatesContext;
   const isNotice = event.stream === "notice" && phase === "warning";
   const guardianTargetItemId =
     typeof data.targetItemId === "string" ? data.targetItemId.trim() : "";
@@ -328,7 +329,21 @@ export function updateChatRunProgressSnapshot(
             itemId: preambleItemId || undefined,
             progressText: data.progressText,
           }
-        : { ...previousUsage?.data, ...data };
+        : { ...previousUsage?.data, ...(invalidatesContext ? {} : data) };
+  if (invalidatesContext) {
+    // Recovery must preserve billing without resurrecting pre-compaction context.
+    for (const key of [
+      "activeContextTokens",
+      "inputTokens",
+      "promptTokens",
+      "cachedInputTokens",
+      "cacheWriteInputTokens",
+      "reasoningOutputTokens",
+    ]) {
+      delete storedData[key];
+    }
+    storedData.activeContextTokens = null;
+  }
   for (const key of Object.keys(storedData)) {
     if (storedData[key] === undefined) {
       delete storedData[key];
@@ -337,7 +352,7 @@ export function updateChatRunProgressSnapshot(
   const storedEvent: AgentEventPayload = {
     runId: event.runId,
     seq: event.seq,
-    stream: event.stream,
+    stream: invalidatesContext ? "usage" : event.stream,
     // Keep first-seen time so reload cannot move updated commentary across a later steer.
     ts: previousPreamble?.ts ?? event.ts,
     data: storedData,

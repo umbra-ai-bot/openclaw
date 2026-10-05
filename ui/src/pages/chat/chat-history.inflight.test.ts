@@ -239,7 +239,7 @@ describe("chat history in-flight assistant recovery", () => {
         stream: "usage",
         ts: 1_100,
         sessionKey: "main",
-        data: { outputTokens: 695, context: { totalTokens: 1_500, contextWindow: 8_000 } },
+        data: { outputTokens: 695, activeContextTokens: 1_500, modelContextWindow: 8_000 },
       },
     ];
     const state = createState(history);
@@ -247,6 +247,10 @@ describe("chat history in-flight assistant recovery", () => {
     await loadHistoryWithBrowserTimers(state);
 
     expect(state.chatRunUsageById?.get("run-live")?.outputTokens).toBe(695);
+    expect(state.chatRunUsageById?.get("run-live")?.context).toEqual({
+      totalTokens: 1_500,
+      modelContextWindow: 8_000,
+    });
     expect(state.chatToolMessages[0]).toMatchObject({
       runId: "run-live",
       toolCallId: "call-restored",

@@ -738,6 +738,62 @@ describe("executeSlashCommand directives", () => {
     expect(request).toHaveBeenNthCalledWith(1, "sessions.list", {});
   });
 
+  it.each([
+    { name: "absent telemetry", snapshot: {}, input: null, output: null, total: null },
+    {
+      name: "input-only telemetry",
+      snapshot: { inputTokens: 1200 },
+      input: "1.2k",
+      output: null,
+      total: null,
+    },
+    {
+      name: "output-only telemetry",
+      snapshot: { outputTokens: 300 },
+      input: null,
+      output: "300",
+      total: null,
+    },
+    {
+      name: "billing totals without a context snapshot",
+      snapshot: { inputTokens: 1200, outputTokens: 300 },
+      input: "1.2k",
+      output: "300",
+      total: "1.5k",
+    },
+    {
+      name: "reported zero telemetry",
+      snapshot: { inputTokens: 0, outputTokens: 0, totalTokens: 0, totalTokensFresh: true },
+      input: "0",
+      output: "0",
+      total: "0",
+      context: "0%",
+    },
+  ])("preserves unavailable versus observed /usage for $name", async (testCase) => {
+    const request = mockRequests({
+      "sessions.list": () => ({
+        sessions: [row("agent:main:main", { contextTokens: 4000, ...testCase.snapshot })],
+      }),
+    });
+
+    const result = await executeSlashCommand(createTestGatewayClient(request), "main", "usage", "");
+    const unavailable = t("chat.commandResults.usage.notAvailable");
+    const lines = [
+      `**${t("chat.commandResults.usage.title")}**`,
+      t("chat.commandResults.usage.inputTokens", { count: `**${testCase.input ?? unavailable}**` }),
+      t("chat.commandResults.usage.outputTokens", {
+        count: `**${testCase.output ?? unavailable}**`,
+      }),
+      t("chat.commandResults.usage.totalTokens", { count: `**${testCase.total ?? unavailable}**` }),
+    ];
+    if (testCase.context) {
+      lines.push(
+        t("chat.commandResults.usage.context", { percent: `**${testCase.context}**`, total: "4k" }),
+      );
+    }
+    expect(result.content).toBe(lines.join("\n"));
+  });
+
   it("reports unknown thinking metadata instead of guessing from the model", async () => {
     const request = mockRequests({
       "sessions.list": () => ({

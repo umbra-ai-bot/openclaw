@@ -1,4 +1,5 @@
 import { asDateTimestampMs } from "@openclaw/normalization-core/number-coercion";
+import type { UsageSummary } from "../../../src/infra/provider-usage.types.js";
 import type { ModelAuthStatusProvider, ModelAuthStatusResult } from "../api/types.ts";
 
 export function formatQuotaReset(resetAt?: number): string | null {
@@ -34,6 +35,8 @@ export function formatQuotaReset(resetAt?: number): string | null {
 export type ProviderUsageDisplayProps = {
   basePath?: string;
   modelAuthStatusResult?: ModelAuthStatusResult | null;
+  /** Execution-owned quota; null means its current native read is unavailable. */
+  sessionUsage?: UsageSummary | null;
 };
 
 export type QuotaLimitSummary = {
@@ -143,4 +146,20 @@ export function collectProviderQuotaGroups(
     });
   }
   return [...groups.values()];
+}
+
+/** Keep native execution quota separate from saved-login auth health. */
+export function sessionUsageQuotaStatus(summary: UsageSummary | null): ModelAuthStatusResult {
+  return {
+    ts: summary?.updatedAt ?? 0,
+    providers: (summary?.providers ?? [])
+      .filter((snapshot) => !snapshot.error)
+      .map((snapshot) => ({
+        provider: snapshot.provider,
+        displayName: snapshot.displayName,
+        status: "ok" as const,
+        profiles: [],
+        usage: { ...snapshot, providerId: snapshot.provider },
+      })),
+  };
 }

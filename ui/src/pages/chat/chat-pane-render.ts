@@ -49,6 +49,7 @@ import { createChatQuestionActions } from "./chat-question-actions.ts";
 import { dismissRealtimeTalkError } from "./chat-realtime.ts";
 import { activeChatRunStartupStatus } from "./chat-run-startup.ts";
 import { chatSendPendingReason } from "./chat-send-support.ts";
+import { readChatComposerProviderUsage } from "./chat-session-provider-usage.ts";
 import { refreshChatCommands } from "./chat-state-refresh.ts";
 import {
   resolveChatAgentId,
@@ -549,10 +550,7 @@ export class ChatPane extends ChatPaneLayoutRender {
         agentsList: state.agentsList,
         hello: state.hello,
       },
-      providerUsage: {
-        basePath: state.basePath,
-        modelAuthStatusResult: state.modelAuthStatusResult,
-      },
+      providerUsage: readChatComposerProviderUsage(state, selectedSession),
       composerControls: composerControls?.composerControls ?? nothing,
       permissionPicker: composerControls?.permissionPicker,
       ...this.suggestionChatProps(state.connected, selectedSessionArchived, multiIdentity),

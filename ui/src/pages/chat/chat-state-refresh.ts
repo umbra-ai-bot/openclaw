@@ -13,7 +13,6 @@ import {
   retireChatMetadataRefresh,
 } from "../../lib/chat/chat-metadata-store.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import { loadModelAuthStatus } from "../../lib/model-auth.ts";
 import {
   hasUnrestrictedModelCatalogSnapshot,
   isModelCatalogRetired,
@@ -32,6 +31,7 @@ import type { ObservedChatHistoryResult } from "./chat-history-snapshot.ts";
 import { loadChatHistory } from "./chat-history.ts";
 import { flushChatQueueAfterIdleSessionReconciliation } from "./chat-queue-reconnect.ts";
 import { flushChatQueueForEvent } from "./chat-send-actions.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import {
   refreshCurrentChatSessionList,
   retireChatModelSelectionOwnership,
@@ -382,39 +382,6 @@ function refreshChatSessionFacts(host: ChatPageHost, binding: ChatMetadataBindin
     });
   binding.sessionFactsRequest = { version, promise };
   return promise;
-}
-
-export async function refreshChatModelAuthStatus(host: ChatPageHost, opts?: { refresh?: boolean }) {
-  if (!host.client || !host.connected) {
-    return;
-  }
-  const client = host.client;
-  const connectionEpoch = host.connectionEpoch;
-  const agentId = resolveChatAgentId(host);
-  const requestVersion = ++host.modelAuthStatusRequestVersion;
-  const ownsRequest = () =>
-    host.client === client &&
-    host.connected &&
-    host.connectionEpoch === connectionEpoch &&
-    host.modelAuthStatusRequestVersion === requestVersion &&
-    resolveChatAgentId(host) === agentId;
-  try {
-    const result = await loadModelAuthStatus(client, {
-      ...opts,
-      agentId,
-    });
-    if (!ownsRequest()) {
-      return;
-    }
-    host.modelAuthStatusResult = result;
-    host.modelAuthStatusError = result.unavailable?.message ?? null;
-  } catch (err) {
-    if (!ownsRequest()) {
-      return;
-    }
-    host.modelAuthStatusResult = { ts: 0, providers: [] };
-    host.modelAuthStatusError = formatUiError(err);
-  }
 }
 
 async function loadChatModelCatalog(

@@ -2,6 +2,46 @@ import { expect, it } from "vitest";
 import { contextBudgetStatusFixture } from "../config/sessions/context-budget.test-support.js";
 import { buildGatewaySessionSnapshot } from "./session-event-payload.js";
 
+it.each([false, true])(
+  "clears unavailable usage in serialized merge snapshots (lifecycle=%s)",
+  (lifecycle) => {
+    const row = { key: "agent:main:usage", kind: "direct" as const, updatedAt: 1 };
+    const previous = buildGatewaySessionSnapshot({
+      sessionRow: {
+        ...row,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        totalTokensFresh: true,
+      },
+      includeSession: true,
+    });
+    // JSON serialization is the boundary: omitted undefined fields retain old client values.
+    // oxlint-disable-next-line unicorn/prefer-structured-clone -- Exercise the JSON wire boundary, not a clone.
+    const cleared = JSON.parse(
+      JSON.stringify(
+        buildGatewaySessionSnapshot({
+          sessionRow: { ...row, updatedAt: 2, totalTokensFresh: false },
+          includeSession: true,
+          lifecycle,
+        }),
+      ),
+    );
+    expect({ ...previous, ...cleared }).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      totalTokens: null,
+      totalTokensFresh: false,
+      session: {
+        inputTokens: null,
+        outputTokens: null,
+        totalTokens: null,
+        totalTokensFresh: false,
+      },
+    });
+  },
+);
+
 it("clears automatic-label metadata when a subscribed client merges a later snapshot", () => {
   const sessionRow = { key: "agent:main:node-device", kind: "direct" as const, updatedAt: 1 };
   const previous = buildGatewaySessionSnapshot({

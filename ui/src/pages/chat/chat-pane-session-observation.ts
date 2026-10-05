@@ -18,6 +18,7 @@ import { ChatPaneSessionCreation } from "./chat-pane-session-creation.ts";
 import { holdProviderReviewQueuedInputs } from "./chat-provider-review.ts";
 import { stopChatRealtimeTalk } from "./chat-realtime.ts";
 import { resumeStoredChatOutboxes } from "./chat-send-actions.ts";
+import { refreshChatModelAuthStatus } from "./chat-session-provider-usage.ts";
 import { handlePageGatewayEvent } from "./chat-state-events.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { resolveChatAgentId } from "./chat-state-route.ts";
@@ -338,6 +339,13 @@ export abstract class ChatPaneSessionObservation extends ChatPaneSessionCreation
           let eventResult = result;
           let predecessorSessionId = retainedTranscriptSessionId;
           const incoming = readSessionChangedEvent(event.payload);
+          if (
+            incoming?.reason === "patch" &&
+            eventResult.applied &&
+            chatScopedEventSessionMatches(state, incoming.key, incoming.agentId ?? undefined)
+          ) {
+            void refreshChatModelAuthStatus(state).finally(() => this.requestUpdate());
+          }
           if (binding.observation && !binding.observation.isCurrent()) {
             const previousSessionId = binding.observation.sessionId;
             predecessorSessionId = previousSessionId;

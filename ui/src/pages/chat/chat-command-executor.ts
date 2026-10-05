@@ -1,3 +1,4 @@
+import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalLowercaseString,
@@ -477,33 +478,34 @@ async function executeUsage(
     if (!session) {
       return { content: t("chat.commandResults.usage.noActiveThread") };
     }
-    const hasInputTokens = Number.isFinite(session.inputTokens);
-    const hasOutputTokens = Number.isFinite(session.outputTokens);
-    const input = hasInputTokens ? (session.inputTokens ?? 0) : 0;
-    const output = hasOutputTokens ? (session.outputTokens ?? 0) : 0;
-    const cumulativeTotal = hasInputTokens || hasOutputTokens ? input + output : null;
-    const contextSnapshotTotal = Number.isFinite(session.totalTokens)
-      ? (session.totalTokens ?? null)
-      : cumulativeTotal;
+    const input = asNonNegativeFiniteNumber(session.inputTokens);
+    const output = asNonNegativeFiniteNumber(session.outputTokens);
+    const cumulativeTotal =
+      input !== undefined && output !== undefined ? input + output : undefined;
+    const contextSnapshotTotal = asNonNegativeFiniteNumber(session.totalTokens);
     const totalTokensFresh = session.totalTokensFresh !== false;
     const limit = resolveSessionContextLimit(session);
     const ctx = limit.tokens;
     const pct =
-      contextSnapshotTotal !== null && totalTokensFresh && ctx > 0
+      contextSnapshotTotal !== undefined && totalTokensFresh && ctx > 0
         ? Math.round((contextSnapshotTotal / ctx) * 100)
         : null;
     const totalDisplay =
-      cumulativeTotal === null
+      cumulativeTotal === undefined
         ? t("chat.commandResults.usage.notAvailable")
         : `${totalTokensFresh ? "" : "~"}${formatCompactTokenCount(cumulativeTotal)}`;
+    const formatCount = (value: number | undefined) =>
+      value === undefined
+        ? t("chat.commandResults.usage.notAvailable")
+        : formatCompactTokenCount(value);
 
     const lines = [
       `**${t("chat.commandResults.usage.title")}**`,
       t("chat.commandResults.usage.inputTokens", {
-        count: `**${formatCompactTokenCount(input)}**`,
+        count: `**${formatCount(input)}**`,
       }),
       t("chat.commandResults.usage.outputTokens", {
-        count: `**${formatCompactTokenCount(output)}**`,
+        count: `**${formatCount(output)}**`,
       }),
       t("chat.commandResults.usage.totalTokens", { count: `**${totalDisplay}**` }),
     ];
