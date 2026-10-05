@@ -45,17 +45,24 @@ export async function reportUpdateStepCompletion(
   step: Parameters<NonNullable<UpdateStepProgress["onStepComplete"]>>[0],
   commandFailure?: { cause: unknown },
 ): Promise<void> {
+  let reportingError: unknown;
   try {
     await progress?.onStepComplete?.(step);
+    return;
   } catch (error) {
-    if (commandFailure || isFailedUpdateStep(step)) {
-      const failure = commandFailure ? commandFailure.cause : createUpdateStepFailureError(step);
-      throw new AggregateError([failure, error], "Update command and completion reporting failed", {
-        cause: failure,
-      });
-    }
-    throw error;
+    reportingError = error;
   }
+  if (commandFailure || isFailedUpdateStep(step)) {
+    const failure = commandFailure ? commandFailure.cause : createUpdateStepFailureError(step);
+    throw new AggregateError(
+      [failure, reportingError],
+      "Update command and completion reporting failed",
+      {
+        cause: failure,
+      },
+    );
+  }
+  throw reportingError;
 }
 
 export async function runStep(opts: RunStepOptions): Promise<UpdateStepResult> {
